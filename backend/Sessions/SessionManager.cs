@@ -8,6 +8,22 @@ public sealed class Session
     public required Guid Id { get; init; }
     public required char Letter { get; init; }
     public required IReadOnlyList<PokemonCandidate> Candidates { get; init; }
+
+    private readonly HashSet<string> _participants = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _participantsLock = new();
+
+    public IReadOnlyCollection<string> Participants
+    {
+        get
+        {
+            lock (_participantsLock) return _participants.ToArray();
+        }
+    }
+
+    internal void AddParticipant(string nickname)
+    {
+        lock (_participantsLock) _participants.Add(nickname);
+    }
 }
 
 public sealed class SessionManager
@@ -33,4 +49,11 @@ public sealed class SessionManager
     }
 
     public Session? Get(Guid id) => _sessions.TryGetValue(id, out var s) ? s : null;
+
+    public bool AddParticipant(Guid sessionId, string nickname)
+    {
+        if (!_sessions.TryGetValue(sessionId, out var session)) return false;
+        session.AddParticipant(nickname);
+        return true;
+    }
 }

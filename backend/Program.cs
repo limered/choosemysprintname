@@ -40,11 +40,24 @@ app.MapGet("/api/sessions/{id:guid}", (Guid id, SessionManager mgr) =>
     });
 });
 
+app.MapPost("/api/sessions/{id:guid}/participants", (Guid id, JoinSessionRequest req, SessionManager mgr) =>
+{
+    if (string.IsNullOrWhiteSpace(req?.Nickname))
+        return Results.BadRequest(new { error = "nickname is required" });
+
+    var nickname = req.Nickname.Trim();
+    if (!mgr.AddParticipant(id, nickname))
+        return Results.NotFound();
+
+    return Results.Ok(new { ok = true });
+});
+
 // SPA fallback: any non-API, non-file route serves index.html
 app.MapFallbackToFile("index.html");
 
 app.Run();
 
 public record CreateSessionRequest(string Letter);
+public record JoinSessionRequest(string Nickname);
 
 public partial class Program;
