@@ -8,6 +8,7 @@ const nicknameKey = `nickname:${sessionId}`
 const voteKey = `vote:${sessionId}`
 
 const POLL_INTERVAL_MS = 1500
+const TICK_INTERVAL_MS = 250
 
 const loading = ref(false)
 const error = ref('')
@@ -20,9 +21,23 @@ const myVote = ref(localStorage.getItem(voteKey) || '')
 const voteError = ref('')
 const voting = ref(false)
 
+const timerError = ref('')
+const startingTimer = ref(false)
+const extendingTimer = ref(false)
+const durationInput = ref(60)
+
+// Track when the last polled secondsRemaining was observed, so we can
+// smoothly tick down between polls.
+const lastPollAtMs = ref(0)
+const nowMs = ref(Date.now())
+
 let pollHandle = null
+let tickHandle = null
 
 const shareUrl = computed(() => window.location.href)
+
+const phase = computed(() => session.value?.phase ?? 'Lobby')
+const winner = computed(() => session.value?.winner ?? null)
 
 const voteCounts = computed(() => {
   const map = {}
@@ -32,10 +47,39 @@ const voteCounts = computed(() => {
   return map
 })
 
+const winnerCandidate = computed(() => {
+  if (!winner.value || !session.value?.candidates) return null
+  return session.value.candidates.find(c => c.name === winner.value) ?? null
+})
+
+const liveSecondsRemaining = computed(() => {
+  const polled = session.value?.secondsRemaining
+  if (polled === null || polled === undefined) return null
+  if (phase.value !== 'Voting') return polled
+  const elapsedSec = Math.max(0, (nowMs.value - lastPollAtMs.value) / 1000)
+  const remaining = polled - elapsedSec
+  return remaining > 0 ? remaining : 0
+})
+
+const countdownLabel = computed(() => {
+  const s = liveSecondsRemaining.value
+  if (s === null || s === undefined) return '--:--'
+  const whole = Math.ceil(s)
+  const mm = Math.floor(whole / 60).toString().padStart(2, '0')
+  const ss = (whole % 60).toString().padStart(2, '0')
+  return `${mm}:${ss}`
+})
+
 function generateNickname() {
   return fetch('/api/nickname')
     .then(r => r.json())
     .then(d => d.nickname)
+}
+
+function applySession(payload) {
+  session.value = payload
+  lastPollAtMs.value = Date.now()
+  nowMs.value = lastPollAtMs.value
 }
 
 async function loadSession() {
@@ -52,7 +96,7 @@ async function loadSession() {
       error.value = `Failed to load session (${res.status})`
       return
     }
-    session.value = await res.json()
+    applySession(await res.json())
   } catch (e) {
     error.value = `Network error: ${e.message}`
   } finally {
@@ -64,22 +108,20 @@ async function refreshSession() {
   try {
     const res = await fetch(`/api/sessions/${sessionId}`)
     if (!res.ok) return
-    session.value = await res.json()
+    applySession(await res.json())
   } catch {
     // ignore transient polling errors
   }
 }
 
 function startPolling() {
-  if (pollHandle) return
-  pollHandle = setInterval(refreshSession, POLL_INTERVAL_MS)
+  if (!pollHandle) pollHandle = setInterval(refreshSession, POLL_INTERVAL_MS)
+  if (!tickHandle) tickHandle = setInterval(() => { nowMs.value = Date.now() }, TICK_INTERVAL_MS)
 }
 
 function stopPolling() {
-  if (pollHandle) {
-    clearInterval(pollHandle)
-    pollHandle = null
-  }
+  if (pollHandle) { clearInterval(pollHandle); pollHandle = null }
+  if (tickHandle) { clearInterval(tickHandle); tickHandle = null }
 }
 
 async function joinSession(nickname) {
@@ -119,10 +161,15 @@ async function castVote(candidateName) {
       body: JSON.stringify({ nickname: myNickname.value, candidateName }),
     })
     if (res.status === 409) {
-      // server says we already voted - lock in the choice locally
-      myVote.value = candidateName
-      localStorage.setItem(voteKey, candidateName)
-      voteError.value = 'You have already voted in this session.'
+      // either "already voted" or "voting not active" - both are conflicts
+      const body = await res.json().catch(() => ({}))
+      if (body?.error && body.error.includes('already voted')) {
+        myVote.value = candidateName
+        localStorage.setItem(voteKey, candidateName)
+        voteError.value = 'You have already voted in this session.'
+      } else {
+        voteError.value = body?.error || 'Voting is not active right now.'
+      }
       return
     }
     if (res.status === 404) {
@@ -140,6 +187,51 @@ async function castVote(candidateName) {
     voteError.value = `Network error: ${e.message}`
   } finally {
     voting.value = false
+  }
+}
+
+async function startTimer() {
+  timerError.value = ''
+  const duration = Number(durationInput.value)
+  if (!Number.isFinite(duration) || duration <= 0) {
+    timerError.value = 'Duration must be a positive number of seconds.'
+    return
+  }
+  startingTimer.value = true
+  try {
+    const res = await fetch(`/api/sessions/${sessionId}/timer/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ durationSeconds: Math.floor(duration) }),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      timerError.value = body?.error || `Failed to start timer (${res.status})`
+      return
+    }
+    await refreshSession()
+  } catch (e) {
+    timerError.value = `Network error: ${e.message}`
+  } finally {
+    startingTimer.value = false
+  }
+}
+
+async function extendTimer() {
+  timerError.value = ''
+  extendingTimer.value = true
+  try {
+    const res = await fetch(`/api/sessions/${sessionId}/timer/extend`, { method: 'POST' })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      timerError.value = body?.error || `Failed to extend timer (${res.status})`
+      return
+    }
+    await refreshSession()
+  } catch (e) {
+    timerError.value = `Network error: ${e.message}`
+  } finally {
+    extendingTimer.value = false
   }
 }
 
@@ -198,8 +290,46 @@ onUnmounted(() => {
         </div>
       </section>
 
+      <section v-if="session" class="timer-panel" :class="`phase-${phase.toLowerCase()}`">
+        <div class="phase-row">
+          <span class="phase-label">Phase:</span>
+          <span class="phase-value">{{ phase }}</span>
+        </div>
+
+        <div v-if="phase === 'Lobby'" class="lobby-controls">
+          <form @submit.prevent="startTimer" class="timer-form">
+            <label>
+              Duration (seconds):
+              <input type="number" min="1" v-model.number="durationInput" :disabled="startingTimer" />
+            </label>
+            <button type="submit" :disabled="startingTimer">
+              {{ startingTimer ? 'Starting…' : 'Start timer' }}
+            </button>
+          </form>
+        </div>
+
+        <div v-else-if="phase === 'Voting'" class="voting-controls">
+          <div class="countdown">{{ countdownLabel }}</div>
+          <button type="button" @click="extendTimer" :disabled="extendingTimer">
+            {{ extendingTimer ? 'Extending…' : '+1 min' }}
+          </button>
+        </div>
+
+        <p v-if="timerError" class="error">{{ timerError }}</p>
+      </section>
+
+      <section v-if="phase === 'Finished' && winnerCandidate" class="winner-panel">
+        <img :src="winnerCandidate.spriteUrl" :alt="winnerCandidate.name" class="winner-sprite" />
+        <div class="winner-name">{{ winnerCandidate.name }}</div>
+        <div class="winner-label">Winner!</div>
+      </section>
+
+      <section v-else-if="phase === 'TieBreaker'" class="tie-panel">
+        It's a tie — tie-breaker coming soon.
+      </section>
+
       <p v-if="voteError" class="error">{{ voteError }}</p>
-      <p v-if="myVote" class="voted-msg">You voted for <strong>{{ myVote }}</strong>.</p>
+      <p v-if="myVote && phase === 'Voting'" class="voted-msg">You voted for <strong>{{ myVote }}</strong>.</p>
 
       <p v-if="loading">Loading candidates…</p>
       <p v-else-if="error" class="error">{{ error }}</p>
@@ -208,7 +338,7 @@ onUnmounted(() => {
         No Pokemon found for this letter.
       </div>
 
-      <ul v-else-if="session" class="grid">
+      <ul v-else-if="session && phase !== 'Finished'" class="grid">
         <li
           v-for="c in session.candidates"
           :key="c.name"
@@ -221,7 +351,7 @@ onUnmounted(() => {
           <button
             type="button"
             class="vote-btn"
-            :disabled="!!myVote || voting"
+            :disabled="!!myVote || voting || phase !== 'Voting'"
             @click="castVote(c.name)"
           >
             {{ myVote === c.name ? 'Your vote' : 'Vote' }}
@@ -291,6 +421,84 @@ onUnmounted(() => {
 .copied {
   font-size: 0.85rem;
   color: #2a7a3a;
+}
+.timer-panel {
+  margin-bottom: 1.5rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #d6dee8;
+  border-radius: 8px;
+  background: #fafcff;
+}
+.phase-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.85rem;
+  color: #555;
+}
+.phase-value {
+  font-weight: 600;
+  color: #2a3a55;
+}
+.lobby-controls .timer-form {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+.lobby-controls input[type="number"] {
+  width: 6rem;
+  padding: 0.3rem 0.4rem;
+  margin-left: 0.4rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+.voting-controls {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+.countdown {
+  font-size: 1.8rem;
+  font-family: monospace;
+  font-weight: 600;
+  color: #2a3a55;
+  min-width: 6rem;
+}
+.winner-panel {
+  margin: 1.5rem 0;
+  padding: 1.5rem;
+  text-align: center;
+  border: 2px solid #2a7a3a;
+  border-radius: 12px;
+  background: #f3fbf5;
+}
+.winner-sprite {
+  width: 192px;
+  height: 192px;
+  image-rendering: pixelated;
+}
+.winner-name {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #1f5a2c;
+  margin-top: 0.5rem;
+  text-transform: capitalize;
+}
+.winner-label {
+  font-size: 1.2rem;
+  color: #2a7a3a;
+  margin-top: 0.25rem;
+}
+.tie-panel {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  text-align: center;
+  background: #fff6e5;
+  border: 1px solid #e0c79a;
+  border-radius: 8px;
+  color: #6a4a10;
 }
 .voted-msg {
   font-size: 0.9rem;

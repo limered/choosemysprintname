@@ -11,6 +11,7 @@ builder.Services.AddSingleton<IGermanPokemonNameSource>(_ =>
 });
 builder.Services.AddSingleton<IPokemonCatalog, PokemonCatalog>();
 builder.Services.AddSingleton<INicknameGenerator, NicknameGenerator>();
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<SessionManager>();
 
 var app = builder.Build();
@@ -41,6 +42,9 @@ app.MapGet("/api/sessions/{id:guid}", (Guid id, SessionManager mgr) =>
     {
         id = session.Id,
         letter = session.Letter.ToString(),
+        phase = session.Phase.ToString(),
+        secondsRemaining = session.SecondsRemaining,
+        winner = session.Winner,
         candidates = session.Candidates.Select(c => new { name = c.Name, spriteUrl = c.SpriteUrl }),
         votes = session.Candidates.Select(c => new { name = c.Name, count = tally.TryGetValue(c.Name, out var n) ? n : 0 })
     });
@@ -70,6 +74,33 @@ app.MapPost("/api/sessions/{id:guid}/votes", (Guid id, CastVoteRequest req, Sess
         CastVoteResult.SessionNotFound => Results.NotFound(new { error = "session not found" }),
         CastVoteResult.CandidateNotFound => Results.NotFound(new { error = "candidate not found in session" }),
         CastVoteResult.AlreadyVoted => Results.Conflict(new { error = "this nickname has already voted" }),
+        CastVoteResult.NotInVotingPhase => Results.Conflict(new { error = "voting is not active in this session phase" }),
+        _ => Results.StatusCode(500),
+    };
+});
+
+app.MapPost("/api/sessions/{id:guid}/timer/start", (Guid id, StartTimerRequest req, SessionManager mgr) =>
+{
+    var duration = req?.DurationSeconds ?? 0;
+    var result = mgr.StartTimer(id, duration);
+    return result switch
+    {
+        StartTimerResult.Success => Results.Ok(new { ok = true }),
+        StartTimerResult.SessionNotFound => Results.NotFound(new { error = "session not found" }),
+        StartTimerResult.NotInLobby => Results.Conflict(new { error = "timer has already been started" }),
+        StartTimerResult.InvalidDuration => Results.BadRequest(new { error = "durationSeconds must be > 0" }),
+        _ => Results.StatusCode(500),
+    };
+});
+
+app.MapPost("/api/sessions/{id:guid}/timer/extend", (Guid id, SessionManager mgr) =>
+{
+    var result = mgr.ExtendTimer(id);
+    return result switch
+    {
+        ExtendTimerResult.Success => Results.Ok(new { ok = true }),
+        ExtendTimerResult.SessionNotFound => Results.NotFound(new { error = "session not found" }),
+        ExtendTimerResult.NotRunning => Results.Conflict(new { error = "timer is not running" }),
         _ => Results.StatusCode(500),
     };
 });
@@ -82,5 +113,6 @@ app.Run();
 public record CreateSessionRequest(string Letter);
 public record JoinSessionRequest(string Nickname);
 public record CastVoteRequest(string Nickname, string CandidateName);
+public record StartTimerRequest(int DurationSeconds);
 
 public partial class Program;
