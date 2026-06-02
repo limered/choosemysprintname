@@ -12,6 +12,14 @@ builder.Services.AddSingleton<IGermanPokemonNameSource>(_ =>
 builder.Services.AddSingleton<IPokemonCatalog, PokemonCatalog>();
 builder.Services.AddSingleton<INicknameGenerator, NicknameGenerator>();
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<IWinnerHistoryStore>(sp =>
+{
+    var config = sp.GetRequiredService<IConfiguration>();
+    var path = config["Sqlite:WinnersDbPath"];
+    if (string.IsNullOrWhiteSpace(path))
+        path = Path.Combine(AppContext.BaseDirectory, "winners.db");
+    return new SqliteWinnerHistoryStore(path);
+});
 builder.Services.AddSingleton<SessionManager>();
 
 var app = builder.Build();

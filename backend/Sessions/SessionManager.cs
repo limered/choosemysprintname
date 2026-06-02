@@ -92,6 +92,14 @@ public sealed class Session
     private string? _winner;
     private Round _currentRound = null!; // initialized in ctor
 
+    /// <summary>
+    /// Invoked exactly once, the moment this session transitions to
+    /// <see cref="SessionPhase.Finished"/>, with the winning candidate name.
+    /// Wired up by <see cref="SessionManager"/> to persist the winner.
+    /// Invoked synchronously on the thread that observed the expiry.
+    /// </summary>
+    internal Action<string>? OnWinnerFinalized { get; set; }
+
     public Session(TimeProvider timeProvider)
     {
         _timeProvider = timeProvider;
@@ -273,6 +281,7 @@ public sealed class Session
             _phase = SessionPhase.Finished;
             _winner = topCandidates[0];
             _currentRound.EndsAtUtc = null;
+            OnWinnerFinalized?.Invoke(_winner);
         }
         else
         {
@@ -288,17 +297,19 @@ public sealed class SessionManager
     private readonly ConcurrentDictionary<Guid, Session> _sessions = new();
     private readonly IPokemonCatalog _catalog;
     private readonly TimeProvider _timeProvider;
+    private readonly IWinnerHistoryStore _winnerStore;
 
-    public SessionManager(IPokemonCatalog catalog, TimeProvider timeProvider)
+    public SessionManager(IPokemonCatalog catalog, TimeProvider timeProvider, IWinnerHistoryStore winnerStore)
     {
         _catalog = catalog;
         _timeProvider = timeProvider;
+        _winnerStore = winnerStore;
     }
 
     public async Task<Session> CreateAsync(char letter, CancellationToken ct = default)
     {
-        var candidates = await _catalog.GetPokemonByLetterAsync(
-            letter, Array.Empty<string>(), ct);
+        var excluded = await _winnerStore.GetAllWinnerNamesAsync(ct);
+        var candidates = await _catalog.GetPokemonByLetterAsync(letter, excluded, ct);
 
         var session = new Session(_timeProvider)
         {
@@ -306,6 +317,11 @@ public sealed class SessionManager
             Letter = char.ToUpperInvariant(letter),
             Candidates = candidates
         };
+        // Persist winners synchronously w.r.t. the operation that observed
+        // the transition to Finished. This keeps the save deterministic and
+        // testable. The callback fires exactly once per session because
+        // ResolveIfExpiredLocked early-returns when no longer in a voting phase.
+        session.OnWinnerFinalized = name => _winnerStore.SaveWinnerAsync(name).GetAwaiter().GetResult();
         session.InitializeFirstRound();
         _sessions[session.Id] = session;
         return session;

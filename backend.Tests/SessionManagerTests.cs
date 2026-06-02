@@ -13,10 +13,32 @@ public class SessionManagerTests
         public IReadOnlyList<GermanPokemonName> GetAll() => _names;
     }
 
+    private sealed class FakeWinnerHistoryStore : IWinnerHistoryStore
+    {
+        public List<string> Saved { get; } = new();
+
+        public FakeWinnerHistoryStore(params string[] preseed) => Saved.AddRange(preseed);
+
+        public Task SaveWinnerAsync(string name, CancellationToken ct = default)
+        {
+            Saved.Add(name);
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<string>> GetAllWinnerNamesAsync(CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<string>>(Saved.ToArray());
+    }
+
     private static SessionManager CreateManager(params GermanPokemonName[] names)
-        => CreateManager(new FakeTimeProvider(), names);
+        => CreateManager(new FakeTimeProvider(), new FakeWinnerHistoryStore(), names);
 
     private static SessionManager CreateManager(FakeTimeProvider time, params GermanPokemonName[] names)
+        => CreateManager(time, new FakeWinnerHistoryStore(), names);
+
+    private static SessionManager CreateManager(
+        FakeTimeProvider time,
+        IWinnerHistoryStore winnerStore,
+        params GermanPokemonName[] names)
     {
         var sample = names.Length == 0
             ? new[]
@@ -26,7 +48,7 @@ public class SessionManagerTests
                   new GermanPokemonName(3, "Bisaflor"),
               }
             : names;
-        return new SessionManager(new PokemonCatalog(new StubSource(sample)), time);
+        return new SessionManager(new PokemonCatalog(new StubSource(sample)), time, winnerStore);
     }
 
     [Fact]
@@ -419,5 +441,79 @@ public class SessionManagerTests
         var second = manager.StartTimer(session.Id, 15);
 
         Assert.Equal(StartTimerResult.TimerAlreadyRunning, second);
+    }
+
+    // ---------- Issue #7: Winner persistence ----------
+
+    [Fact]
+    public async Task Winner_is_saved_to_store_when_session_finishes()
+    {
+        var time = new FakeTimeProvider();
+        var store = new FakeWinnerHistoryStore();
+        var manager = CreateManager(time, store);
+        var session = await manager.CreateAsync('B');
+        manager.StartTimer(session.Id, 30);
+        manager.CastVote(session.Id, "alice", "Bisasam");
+
+        time.Advance(TimeSpan.FromSeconds(31));
+        _ = session.Phase; // observe expiry
+
+        Assert.Equal(SessionPhase.Finished, session.Phase);
+        Assert.Equal(new[] { "Bisasam" }, store.Saved.ToArray());
+    }
+
+    [Fact]
+    public async Task Winner_is_not_saved_when_session_ends_in_tiebreaker()
+    {
+        var time = new FakeTimeProvider();
+        var store = new FakeWinnerHistoryStore();
+        var manager = CreateManager(time, store);
+        var session = await manager.CreateAsync('B');
+        manager.StartTimer(session.Id, 30);
+        manager.CastVote(session.Id, "alice", "Bisasam");
+        manager.CastVote(session.Id, "bob", "Bisaknosp");
+
+        time.Advance(TimeSpan.FromSeconds(31));
+        _ = session.Phase;
+
+        Assert.Equal(SessionPhase.TieBreaker, session.Phase);
+        Assert.Empty(store.Saved);
+    }
+
+    [Fact]
+    public async Task Winner_is_saved_only_once_even_if_state_is_read_many_times()
+    {
+        var time = new FakeTimeProvider();
+        var store = new FakeWinnerHistoryStore();
+        var manager = CreateManager(time, store);
+        var session = await manager.CreateAsync('B');
+        manager.StartTimer(session.Id, 30);
+        manager.CastVote(session.Id, "alice", "Bisasam");
+
+        time.Advance(TimeSpan.FromSeconds(31));
+
+        // Multiple state reads each invoke ResolveIfExpiredLocked.
+        _ = session.Phase;
+        _ = session.Winner;
+        _ = session.Tally;
+        _ = session.SecondsRemaining;
+        _ = session.CurrentRoundCandidates;
+
+        Assert.Single(store.Saved);
+        Assert.Equal("Bisasam", store.Saved[0]);
+    }
+
+    [Fact]
+    public async Task CreateAsync_passes_existing_winner_names_as_exclusion_list_to_catalog()
+    {
+        var store = new FakeWinnerHistoryStore("Bisasam");
+        var manager = CreateManager(new FakeTimeProvider(), store);
+
+        var session = await manager.CreateAsync('B');
+
+        var candidateNames = session.Candidates.Select(c => c.Name).ToArray();
+        Assert.DoesNotContain("Bisasam", candidateNames);
+        Assert.Contains("Bisaknosp", candidateNames);
+        Assert.Contains("Bisaflor", candidateNames);
     }
 }

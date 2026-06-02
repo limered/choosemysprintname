@@ -57,3 +57,7 @@ The included `Dockerfile` is a self-contained multi-stage build (Node -> .NET SD
 3. Choose the **Docker** runtime; Render detects the `Dockerfile` automatically.
 4. The container listens on port `8080`; Render maps it to the public URL.
 5. No environment variables required for the initial deploy.
+
+### Persistence note
+
+The winners history is stored in a SQLite file (`winners.db`, location configurable via `Sqlite:WinnersDbPath`). On Render this file lives on the container's local ephemeral filesystem and is **reset on every redeploy or restart**. To persist winners across deploys, attach a [Render Disk](https://render.com/docs/disks) and point `Sqlite:WinnersDbPath` (or env var `Sqlite__WinnersDbPath`) at a path inside the mounted disk. Disk attachment is out of scope for the initial setup.
