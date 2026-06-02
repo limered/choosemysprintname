@@ -10,12 +10,16 @@ const loading = ref(false)
 const error = ref('')
 const session = ref(null)
 const joined = ref(false)
-const nickname = ref('')
-const joining = ref(false)
 const joinError = ref('')
 const copied = ref(false)
 
 const shareUrl = computed(() => window.location.href)
+
+function generateNickname() {
+  return fetch('/api/nickname')
+    .then(r => r.json())
+    .then(d => d.nickname)
+}
 
 async function loadSession() {
   loading.value = true
@@ -38,19 +42,13 @@ async function loadSession() {
   }
 }
 
-async function joinSession() {
+async function joinSession(nickname) {
   joinError.value = ''
-  const trimmed = (nickname.value || '').trim()
-  if (!trimmed) {
-    joinError.value = 'Please enter a nickname.'
-    return
-  }
-  joining.value = true
   try {
     const res = await fetch(`/api/sessions/${sessionId}/participants`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nickname: trimmed }),
+      body: JSON.stringify({ nickname }),
     })
     if (res.status === 404) {
       joinError.value = 'Session not found.'
@@ -60,13 +58,11 @@ async function joinSession() {
       joinError.value = `Failed to join (${res.status})`
       return
     }
-    localStorage.setItem(storageKey, trimmed)
+    localStorage.setItem(storageKey, nickname)
     joined.value = true
     await loadSession()
   } catch (e) {
     joinError.value = `Network error: ${e.message}`
-  } finally {
-    joining.value = false
   }
 }
 
@@ -80,11 +76,19 @@ async function copyShareLink() {
   }
 }
 
-onMounted(() => {
-  const existing = localStorage.getItem(storageKey)
-  if (existing) {
+onMounted(async () => {
+  let nickname = localStorage.getItem(storageKey)
+  if (nickname) {
     joined.value = true
     loadSession()
+  } else {
+    try {
+      nickname = await generateNickname()
+    } catch (e) {
+      joinError.value = `Failed to generate nickname: ${e.message}`
+      return
+    }
+    joinSession(nickname)
   }
 })
 </script>
@@ -94,27 +98,12 @@ onMounted(() => {
     <header>
       <RouterLink to="/" class="back">&larr; New session</RouterLink>
       <h1 v-if="joined && session">Candidates starting with “{{ session.letter }}”</h1>
-      <h1 v-else>Join session</h1>
+      <h1 v-else>Joining session…</h1>
     </header>
 
-    <section v-if="!joined" class="join">
-      <p>Enter a nickname to join this voting session.</p>
-      <form @submit.prevent="joinSession">
-        <input
-          v-model="nickname"
-          placeholder="Your nickname"
-          autocomplete="off"
-          :disabled="joining"
-          maxlength="40"
-        />
-        <button type="submit" :disabled="joining">
-          {{ joining ? 'Joining…' : 'Join' }}
-        </button>
-      </form>
-      <p v-if="joinError" class="error">{{ joinError }}</p>
-    </section>
+    <p v-if="joinError" class="error">{{ joinError }}</p>
 
-    <template v-else>
+    <template v-if="joined">
       <section class="share">
         <label>Share this link:</label>
         <div class="share-row">
@@ -156,21 +145,6 @@ header {
 .back {
   font-size: 0.9rem;
 }
-.join form {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 1rem;
-}
-.join input {
-  flex: 1;
-  font-size: 1rem;
-  padding: 0.5rem;
-}
-.join button {
-  font-size: 1rem;
-  padding: 0.5rem 1rem;
-  cursor: pointer;
-}
 .share {
   margin-bottom: 1.5rem;
   padding: 0.75rem 1rem;
@@ -196,6 +170,7 @@ header {
   border: 1px solid #ccc;
   border-radius: 4px;
   background: #fff;
+  color: #222;
 }
 .copied {
   font-size: 0.85rem;

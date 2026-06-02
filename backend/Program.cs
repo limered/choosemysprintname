@@ -1,3 +1,4 @@
+using Backend.Nicknames;
 using Backend.Pokemon;
 using Backend.Sessions;
 
@@ -9,6 +10,7 @@ builder.Services.AddSingleton<IGermanPokemonNameSource>(_ =>
     return new JsonFileGermanPokemonNameSource(path);
 });
 builder.Services.AddSingleton<IPokemonCatalog, PokemonCatalog>();
+builder.Services.AddSingleton<INicknameGenerator, NicknameGenerator>();
 builder.Services.AddSingleton<SessionManager>();
 
 var app = builder.Build();
@@ -17,6 +19,8 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
+
+app.MapGet("/api/nickname", (INicknameGenerator gen) => Results.Ok(new { nickname = gen.Generate() }));
 
 app.MapPost("/api/sessions", async (CreateSessionRequest req, SessionManager mgr, CancellationToken ct) =>
 {
