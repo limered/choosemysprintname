@@ -78,7 +78,7 @@ public class SessionManagerTests
     }
 
     [Fact]
-    public async Task CastVote_rejects_second_vote_from_same_nickname()
+    public async Task CastVote_allows_changing_vote_within_same_round()
     {
         var manager = CreateManager();
         var session = await manager.CreateAsync('B');
@@ -88,9 +88,26 @@ public class SessionManagerTests
 
         var second = manager.CastVote(session.Id, "alice", "Bisaknosp");
 
-        Assert.Equal(CastVoteResult.AlreadyVoted, second);
-        Assert.Equal(1, session.Tally["Bisasam"]);
-        Assert.Equal(0, session.Tally["Bisaknosp"]);
+        Assert.Equal(CastVoteResult.Success, second);
+        Assert.Equal(0, session.Tally["Bisasam"]);
+        Assert.Equal(1, session.Tally["Bisaknosp"]);
+    }
+
+    [Fact]
+    public async Task VotersByCandidate_lists_each_voter_under_their_chosen_candidate()
+    {
+        var manager = CreateManager();
+        var session = await manager.CreateAsync('B');
+        manager.StartTimer(session.Id, 60);
+        manager.CastVote(session.Id, "alice", "Bisasam");
+        manager.CastVote(session.Id, "bob", "Bisasam");
+        manager.CastVote(session.Id, "carol", "Bisaknosp");
+
+        var voters = session.VotersByCandidate;
+
+        Assert.Equal(new[] { "alice", "bob" }, voters["Bisasam"].OrderBy(x => x).ToArray());
+        Assert.Equal(new[] { "carol" }, voters["Bisaknosp"].ToArray());
+        Assert.Empty(voters["Bisaflor"]);
     }
 
     [Fact]

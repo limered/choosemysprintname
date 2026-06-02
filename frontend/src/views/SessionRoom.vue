@@ -52,6 +52,14 @@ const voteCounts = computed(() => {
   return map
 })
 
+const voters = computed(() => {
+  const map = {}
+  if (session.value?.votes) {
+    for (const v of session.value.votes) map[v.name] = v.voters || []
+  }
+  return map
+})
+
 const winnerCandidate = computed(() => {
   if (!winner.value || !session.value?.candidates) return null
   return session.value.candidates.find(c => c.name === winner.value) ?? null
@@ -177,7 +185,8 @@ async function joinSession(nickname) {
 }
 
 async function castVote(candidateName) {
-  if (myVote.value || voting.value) return
+  if (voting.value) return
+  if (myVote.value === candidateName) return
   voteError.value = ''
   voting.value = true
   try {
@@ -187,15 +196,8 @@ async function castVote(candidateName) {
       body: JSON.stringify({ nickname: myNickname.value, candidateName }),
     })
     if (res.status === 409) {
-      // either "already voted" or "voting not active" - both are conflicts
       const body = await res.json().catch(() => ({}))
-      if (body?.error && body.error.includes('already voted')) {
-        myVote.value = candidateName
-        localStorage.setItem(voteKey.value, candidateName)
-        voteError.value = 'You have already voted in this round.'
-      } else {
-        voteError.value = body?.error || 'Voting is not active right now.'
-      }
+      voteError.value = body?.error || 'Voting is not active right now.'
       return
     }
     if (res.status === 404) {
@@ -369,7 +371,7 @@ onUnmounted(() => {
 
       <p v-if="voteError" class="error">{{ voteError }}</p>
       <p v-if="myVote && (phase === 'Voting' || phase === 'TieBreaker')" class="voted-msg">
-        You voted for <strong>{{ myVote }}</strong> in this round.
+        You voted for <strong>{{ myVote }}</strong> in this round. Click another candidate to change your vote.
       </p>
 
       <p v-if="loading">Loading candidates…</p>
@@ -388,6 +390,9 @@ onUnmounted(() => {
             'my-vote': myVote === c.name,
             'out-of-round': (phase === 'TieBreaker') && !roundCandidateSet.has(c.name)
           }"
+          :title="roundCandidateSet.has(c.name) && (voters[c.name]?.length)
+            ? `Voted by: ${voters[c.name].join(', ')}`
+            : ''"
         >
           <img :src="c.spriteUrl" :alt="c.name" loading="lazy" />
           <span class="name">{{ c.name }}</span>
@@ -400,10 +405,10 @@ onUnmounted(() => {
           <button
             type="button"
             class="vote-btn"
-            :disabled="!!myVote || voting || !canVoteNow || !roundCandidateSet.has(c.name)"
+            :disabled="voting || !canVoteNow || !roundCandidateSet.has(c.name) || myVote === c.name"
             @click="castVote(c.name)"
           >
-            {{ myVote === c.name ? 'Your vote' : 'Vote' }}
+            {{ myVote === c.name ? 'Your vote' : (myVote ? 'Change to this' : 'Vote') }}
           </button>
         </li>
       </ul>
@@ -556,6 +561,10 @@ onUnmounted(() => {
   border: 1px solid #b9e0c4;
   padding: 0.4rem 0.6rem;
   border-radius: 6px;
+  margin-bottom: 2rem;
+}
+.candidate {
+  cursor: help;
 }
 .grid {
   list-style: none;

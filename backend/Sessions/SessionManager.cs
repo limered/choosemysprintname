@@ -16,7 +16,6 @@ public enum CastVoteResult
     Success,
     SessionNotFound,
     CandidateNotFound,
-    AlreadyVoted,
     NotInVotingPhase,
 }
 
@@ -73,6 +72,20 @@ internal sealed class Round
             if (counts.ContainsKey(candidateName)) counts[candidateName]++;
         }
         return counts;
+    }
+
+    /// <summary>
+    /// Returns each in-play candidate with the list of nicknames currently
+    /// voting for them. Candidates with no voters get an empty list.
+    /// </summary>
+    public Dictionary<string, List<string>> VotersByCandidate()
+    {
+        var map = CandidatesInPlay.ToDictionary(n => n, _ => new List<string>(), StringComparer.Ordinal);
+        foreach (var (nickname, candidateName) in VotesByNickname)
+        {
+            if (map.TryGetValue(candidateName, out var list)) list.Add(nickname);
+        }
+        return map;
     }
 }
 
@@ -195,6 +208,23 @@ public sealed class Session
         }
     }
 
+    /// <summary>
+    /// Voter nicknames per in-play candidate for the current round. Used to
+    /// show who voted for what on the UI.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> VotersByCandidate
+    {
+        get
+        {
+            lock (_stateLock)
+            {
+                ResolveIfExpiredLocked();
+                var map = _currentRound.VotersByCandidate();
+                return map.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<string>)kv.Value, StringComparer.Ordinal);
+            }
+        }
+    }
+
     internal void AddParticipant(string nickname)
     {
         lock (_participantsLock) _participants.Add(nickname);
@@ -247,8 +277,7 @@ public sealed class Session
             if (!_currentRound.IsCandidateInPlay(candidateName))
                 return CastVoteResult.CandidateNotFound;
 
-            if (_currentRound.VotesByNickname.ContainsKey(nickname))
-                return CastVoteResult.AlreadyVoted;
+            // Allow changing one's vote within a round: just overwrite.
             _currentRound.VotesByNickname[nickname] = candidateName;
             return CastVoteResult.Success;
         }

@@ -46,6 +46,7 @@ app.MapGet("/api/sessions/{id:guid}", (Guid id, SessionManager mgr) =>
     if (session is null) return Results.NotFound();
 
     var tally = session.Tally;
+    var voters = session.VotersByCandidate;
     var roundCandidates = session.CurrentRoundCandidates;
     return Results.Ok(new
     {
@@ -57,7 +58,12 @@ app.MapGet("/api/sessions/{id:guid}", (Guid id, SessionManager mgr) =>
         roundId = session.CurrentRoundId,
         candidates = session.Candidates.Select(c => new { name = c.Name, spriteUrl = c.SpriteUrl }),
         roundCandidates = roundCandidates,
-        votes = roundCandidates.Select(name => new { name, count = tally.TryGetValue(name, out var n) ? n : 0 })
+        votes = roundCandidates.Select(name => new
+        {
+            name,
+            count = tally.TryGetValue(name, out var n) ? n : 0,
+            voters = voters.TryGetValue(name, out var vs) ? vs : (IReadOnlyList<string>)Array.Empty<string>()
+        })
     });
 });
 
@@ -84,7 +90,6 @@ app.MapPost("/api/sessions/{id:guid}/votes", (Guid id, CastVoteRequest req, Sess
         CastVoteResult.Success => Results.Ok(new { ok = true }),
         CastVoteResult.SessionNotFound => Results.NotFound(new { error = "session not found" }),
         CastVoteResult.CandidateNotFound => Results.NotFound(new { error = "candidate not found in session" }),
-        CastVoteResult.AlreadyVoted => Results.Conflict(new { error = "this nickname has already voted" }),
         CastVoteResult.NotInVotingPhase => Results.Conflict(new { error = "voting is not active in this session phase" }),
         _ => Results.StatusCode(500),
     };
