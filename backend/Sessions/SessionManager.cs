@@ -3,6 +3,14 @@ using Backend.Pokemon;
 
 namespace Backend.Sessions;
 
+public enum CastVoteResult
+{
+    Success,
+    SessionNotFound,
+    CandidateNotFound,
+    AlreadyVoted,
+}
+
 public sealed class Session
 {
     public required Guid Id { get; init; }
@@ -12,6 +20,10 @@ public sealed class Session
     private readonly HashSet<string> _participants = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _participantsLock = new();
 
+    // nickname -> candidate name. Nickname comparison is case-insensitive.
+    private readonly Dictionary<string, string> _votesByNickname = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _votesLock = new();
+
     public IReadOnlyCollection<string> Participants
     {
         get
@@ -20,9 +32,44 @@ public sealed class Session
         }
     }
 
+    /// <summary>
+    /// Returns a snapshot of per-candidate vote counts. Every candidate is
+    /// included, even those with zero votes. Keyed by candidate name
+    /// (case-sensitive, matching <see cref="Candidates"/>).
+    /// </summary>
+    public IReadOnlyDictionary<string, int> Tally
+    {
+        get
+        {
+            var counts = Candidates.ToDictionary(c => c.Name, _ => 0, StringComparer.Ordinal);
+            lock (_votesLock)
+            {
+                foreach (var candidateName in _votesByNickname.Values)
+                {
+                    if (counts.ContainsKey(candidateName)) counts[candidateName]++;
+                }
+            }
+            return counts;
+        }
+    }
+
     internal void AddParticipant(string nickname)
     {
         lock (_participantsLock) _participants.Add(nickname);
+    }
+
+    internal CastVoteResult CastVote(string nickname, string candidateName)
+    {
+        if (!Candidates.Any(c => string.Equals(c.Name, candidateName, StringComparison.Ordinal)))
+            return CastVoteResult.CandidateNotFound;
+
+        lock (_votesLock)
+        {
+            if (_votesByNickname.ContainsKey(nickname))
+                return CastVoteResult.AlreadyVoted;
+            _votesByNickname[nickname] = candidateName;
+        }
+        return CastVoteResult.Success;
     }
 }
 
@@ -55,5 +102,12 @@ public sealed class SessionManager
         if (!_sessions.TryGetValue(sessionId, out var session)) return false;
         session.AddParticipant(nickname);
         return true;
+    }
+
+    public CastVoteResult CastVote(Guid sessionId, string nickname, string candidateName)
+    {
+        if (!_sessions.TryGetValue(sessionId, out var session))
+            return CastVoteResult.SessionNotFound;
+        return session.CastVote(nickname, candidateName);
     }
 }

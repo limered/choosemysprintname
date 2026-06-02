@@ -36,11 +36,13 @@ app.MapGet("/api/sessions/{id:guid}", (Guid id, SessionManager mgr) =>
     var session = mgr.Get(id);
     if (session is null) return Results.NotFound();
 
+    var tally = session.Tally;
     return Results.Ok(new
     {
         id = session.Id,
         letter = session.Letter.ToString(),
-        candidates = session.Candidates.Select(c => new { name = c.Name, spriteUrl = c.SpriteUrl })
+        candidates = session.Candidates.Select(c => new { name = c.Name, spriteUrl = c.SpriteUrl }),
+        votes = session.Candidates.Select(c => new { name = c.Name, count = tally.TryGetValue(c.Name, out var n) ? n : 0 })
     });
 });
 
@@ -56,6 +58,22 @@ app.MapPost("/api/sessions/{id:guid}/participants", (Guid id, JoinSessionRequest
     return Results.Ok(new { ok = true });
 });
 
+app.MapPost("/api/sessions/{id:guid}/votes", (Guid id, CastVoteRequest req, SessionManager mgr) =>
+{
+    if (string.IsNullOrWhiteSpace(req?.Nickname) || string.IsNullOrWhiteSpace(req?.CandidateName))
+        return Results.BadRequest(new { error = "nickname and candidateName are required" });
+
+    var result = mgr.CastVote(id, req.Nickname.Trim(), req.CandidateName.Trim());
+    return result switch
+    {
+        CastVoteResult.Success => Results.Ok(new { ok = true }),
+        CastVoteResult.SessionNotFound => Results.NotFound(new { error = "session not found" }),
+        CastVoteResult.CandidateNotFound => Results.NotFound(new { error = "candidate not found in session" }),
+        CastVoteResult.AlreadyVoted => Results.Conflict(new { error = "this nickname has already voted" }),
+        _ => Results.StatusCode(500),
+    };
+});
+
 // SPA fallback: any non-API, non-file route serves index.html
 app.MapFallbackToFile("index.html");
 
@@ -63,5 +81,6 @@ app.Run();
 
 public record CreateSessionRequest(string Letter);
 public record JoinSessionRequest(string Nickname);
+public record CastVoteRequest(string Nickname, string CandidateName);
 
 public partial class Program;

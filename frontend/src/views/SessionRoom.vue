@@ -1,10 +1,13 @@
 <script setup>
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, onUnmounted, ref, computed } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
 
 const route = useRoute()
 const sessionId = route.params.id
-const storageKey = `nickname:${sessionId}`
+const nicknameKey = `nickname:${sessionId}`
+const voteKey = `vote:${sessionId}`
+
+const POLL_INTERVAL_MS = 1500
 
 const loading = ref(false)
 const error = ref('')
@@ -13,8 +16,21 @@ const joined = ref(false)
 const joinError = ref('')
 const copied = ref(false)
 const myNickname = ref('')
+const myVote = ref(localStorage.getItem(voteKey) || '')
+const voteError = ref('')
+const voting = ref(false)
+
+let pollHandle = null
 
 const shareUrl = computed(() => window.location.href)
+
+const voteCounts = computed(() => {
+  const map = {}
+  if (session.value?.votes) {
+    for (const v of session.value.votes) map[v.name] = v.count
+  }
+  return map
+})
 
 function generateNickname() {
   return fetch('/api/nickname')
@@ -29,6 +45,7 @@ async function loadSession() {
     const res = await fetch(`/api/sessions/${sessionId}`)
     if (res.status === 404) {
       error.value = 'Session not found.'
+      stopPolling()
       return
     }
     if (!res.ok) {
@@ -40,6 +57,28 @@ async function loadSession() {
     error.value = `Network error: ${e.message}`
   } finally {
     loading.value = false
+  }
+}
+
+async function refreshSession() {
+  try {
+    const res = await fetch(`/api/sessions/${sessionId}`)
+    if (!res.ok) return
+    session.value = await res.json()
+  } catch {
+    // ignore transient polling errors
+  }
+}
+
+function startPolling() {
+  if (pollHandle) return
+  pollHandle = setInterval(refreshSession, POLL_INTERVAL_MS)
+}
+
+function stopPolling() {
+  if (pollHandle) {
+    clearInterval(pollHandle)
+    pollHandle = null
   }
 }
 
@@ -59,12 +98,48 @@ async function joinSession(nickname) {
       joinError.value = `Failed to join (${res.status})`
       return
     }
-    localStorage.setItem(storageKey, nickname)
+    localStorage.setItem(nicknameKey, nickname)
     myNickname.value = nickname
     joined.value = true
     await loadSession()
+    startPolling()
   } catch (e) {
     joinError.value = `Network error: ${e.message}`
+  }
+}
+
+async function castVote(candidateName) {
+  if (myVote.value || voting.value) return
+  voteError.value = ''
+  voting.value = true
+  try {
+    const res = await fetch(`/api/sessions/${sessionId}/votes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nickname: myNickname.value, candidateName }),
+    })
+    if (res.status === 409) {
+      // server says we already voted - lock in the choice locally
+      myVote.value = candidateName
+      localStorage.setItem(voteKey, candidateName)
+      voteError.value = 'You have already voted in this session.'
+      return
+    }
+    if (res.status === 404) {
+      voteError.value = 'Session or candidate not found.'
+      return
+    }
+    if (!res.ok) {
+      voteError.value = `Failed to vote (${res.status})`
+      return
+    }
+    myVote.value = candidateName
+    localStorage.setItem(voteKey, candidateName)
+    refreshSession()
+  } catch (e) {
+    voteError.value = `Network error: ${e.message}`
+  } finally {
+    voting.value = false
   }
 }
 
@@ -79,11 +154,12 @@ async function copyShareLink() {
 }
 
 onMounted(async () => {
-  let nickname = localStorage.getItem(storageKey)
+  let nickname = localStorage.getItem(nicknameKey)
   if (nickname) {
     myNickname.value = nickname
     joined.value = true
-    loadSession()
+    await loadSession()
+    startPolling()
   } else {
     try {
       nickname = await generateNickname()
@@ -93,6 +169,10 @@ onMounted(async () => {
     }
     joinSession(nickname)
   }
+})
+
+onUnmounted(() => {
+  stopPolling()
 })
 </script>
 
@@ -118,6 +198,9 @@ onMounted(async () => {
         </div>
       </section>
 
+      <p v-if="voteError" class="error">{{ voteError }}</p>
+      <p v-if="myVote" class="voted-msg">You voted for <strong>{{ myVote }}</strong>.</p>
+
       <p v-if="loading">Loading candidates…</p>
       <p v-else-if="error" class="error">{{ error }}</p>
 
@@ -126,9 +209,23 @@ onMounted(async () => {
       </div>
 
       <ul v-else-if="session" class="grid">
-        <li v-for="c in session.candidates" :key="c.name" class="candidate">
+        <li
+          v-for="c in session.candidates"
+          :key="c.name"
+          class="candidate"
+          :class="{ 'my-vote': myVote === c.name }"
+        >
           <img :src="c.spriteUrl" :alt="c.name" loading="lazy" />
           <span class="name">{{ c.name }}</span>
+          <span class="count">{{ voteCounts[c.name] ?? 0 }} vote{{ (voteCounts[c.name] ?? 0) === 1 ? '' : 's' }}</span>
+          <button
+            type="button"
+            class="vote-btn"
+            :disabled="!!myVote || voting"
+            @click="castVote(c.name)"
+          >
+            {{ myVote === c.name ? 'Your vote' : 'Vote' }}
+          </button>
         </li>
       </ul>
     </template>
@@ -195,12 +292,20 @@ onMounted(async () => {
   font-size: 0.85rem;
   color: #2a7a3a;
 }
+.voted-msg {
+  font-size: 0.9rem;
+  color: #2a3a55;
+  background: #eef9f1;
+  border: 1px solid #b9e0c4;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+}
 .grid {
   list-style: none;
   padding: 0;
   margin: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 1rem;
 }
 .candidate {
@@ -211,6 +316,12 @@ onMounted(async () => {
   border: 1px solid #ddd;
   border-radius: 8px;
   background: #fafafa;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.candidate.my-vote {
+  border-color: #2a7a3a;
+  box-shadow: 0 0 0 2px rgba(42, 122, 58, 0.2);
+  background: #f3fbf5;
 }
 .candidate img {
   width: 96px;
@@ -221,6 +332,32 @@ onMounted(async () => {
   margin-top: 0.5rem;
   text-transform: capitalize;
   font-size: 0.95rem;
+}
+.count {
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  color: #555;
+}
+.vote-btn {
+  margin-top: 0.5rem;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.85rem;
+  border: 1px solid #2a3a55;
+  border-radius: 4px;
+  background: #2a3a55;
+  color: #fff;
+  cursor: pointer;
+}
+.vote-btn:disabled {
+  background: #c8cdd6;
+  border-color: #c8cdd6;
+  color: #555;
+  cursor: not-allowed;
+}
+.candidate.my-vote .vote-btn:disabled {
+  background: #2a7a3a;
+  border-color: #2a7a3a;
+  color: #fff;
 }
 .error {
   color: #c0392b;
