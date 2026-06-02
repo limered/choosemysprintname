@@ -1,9 +1,15 @@
-using System.Net.Http.Json;
-using System.Text.Json.Serialization;
+using System.Text.Json;
 
 namespace Backend.Pokemon;
 
 public record PokemonCandidate(string Name, string SpriteUrl);
+
+public record GermanPokemonName(int Id, string Name);
+
+public interface IGermanPokemonNameSource
+{
+    IReadOnlyList<GermanPokemonName> GetAll();
+}
 
 public interface IPokemonCatalog
 {
@@ -15,62 +21,53 @@ public interface IPokemonCatalog
 
 public sealed class PokemonCatalog : IPokemonCatalog
 {
-    private readonly HttpClient _http;
+    private readonly IGermanPokemonNameSource _source;
 
-    public PokemonCatalog(HttpClient http) => _http = http;
+    public PokemonCatalog(IGermanPokemonNameSource source) => _source = source;
 
-    public async Task<IReadOnlyList<PokemonCandidate>> GetPokemonByLetterAsync(
+    public Task<IReadOnlyList<PokemonCandidate>> GetPokemonByLetterAsync(
         char letter,
         IEnumerable<string> excludedNames,
         CancellationToken ct = default)
     {
-        var list = await _http.GetFromJsonAsync<PokeApiList>(
-            "api/v2/pokemon?limit=10000", ct) ?? new PokeApiList();
-
         var prefix = char.ToLowerInvariant(letter);
         var excluded = new HashSet<string>(
             excludedNames ?? Array.Empty<string>(),
             StringComparer.OrdinalIgnoreCase);
 
         var results = new List<PokemonCandidate>();
-        foreach (var entry in list.Results ?? Array.Empty<PokeApiEntry>())
+        foreach (var entry in _source.GetAll())
         {
             if (string.IsNullOrEmpty(entry.Name)) continue;
             if (char.ToLowerInvariant(entry.Name[0]) != prefix) continue;
             if (excluded.Contains(entry.Name)) continue;
 
-            var id = ExtractId(entry.Url);
-            var sprite = id is null
-                ? string.Empty
-                : $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{id}.png";
-
+            var sprite = $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{entry.Id}.png";
             results.Add(new PokemonCandidate(entry.Name, sprite));
         }
 
-        return results;
+        return Task.FromResult<IReadOnlyList<PokemonCandidate>>(results);
     }
+}
 
-    private static int? ExtractId(string? url)
+public sealed class JsonFileGermanPokemonNameSource : IGermanPokemonNameSource
+{
+    private readonly IReadOnlyList<GermanPokemonName> _names;
+
+    public JsonFileGermanPokemonNameSource(string filePath)
     {
-        if (string.IsNullOrEmpty(url)) return null;
-        var trimmed = url.TrimEnd('/');
-        var lastSlash = trimmed.LastIndexOf('/');
-        if (lastSlash < 0 || lastSlash == trimmed.Length - 1) return null;
-        return int.TryParse(trimmed.AsSpan(lastSlash + 1), out var id) ? id : null;
+        if (!File.Exists(filePath))
+            throw new FileNotFoundException($"German Pokemon name data file not found: {filePath}", filePath);
+
+        using var stream = File.OpenRead(filePath);
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        };
+        var parsed = JsonSerializer.Deserialize<List<GermanPokemonName>>(stream, options)
+            ?? new List<GermanPokemonName>();
+        _names = parsed;
     }
 
-    private sealed class PokeApiList
-    {
-        [JsonPropertyName("results")]
-        public PokeApiEntry[]? Results { get; set; }
-    }
-
-    private sealed class PokeApiEntry
-    {
-        [JsonPropertyName("name")]
-        public string? Name { get; set; }
-
-        [JsonPropertyName("url")]
-        public string? Url { get; set; }
-    }
+    public IReadOnlyList<GermanPokemonName> GetAll() => _names;
 }

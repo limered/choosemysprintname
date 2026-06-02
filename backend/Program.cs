@@ -3,10 +3,12 @@ using Backend.Sessions;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddHttpClient<IPokemonCatalog, PokemonCatalog>(client =>
+builder.Services.AddSingleton<IGermanPokemonNameSource>(_ =>
 {
-    client.BaseAddress = new Uri("https://pokeapi.co/");
+    var path = Path.Combine(AppContext.BaseDirectory, "Pokemon", "Data", "german-pokemon-names.json");
+    return new JsonFileGermanPokemonNameSource(path);
 });
+builder.Services.AddSingleton<IPokemonCatalog, PokemonCatalog>();
 builder.Services.AddSingleton<SessionManager>();
 
 var app = builder.Build();
@@ -18,7 +20,7 @@ app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
 
 app.MapPost("/api/sessions", async (CreateSessionRequest req, SessionManager mgr, CancellationToken ct) =>
 {
-    if (string.IsNullOrWhiteSpace(req.Letter) || req.Letter.Length != 1 || !char.IsLetter(req.Letter[0]))
+    if (string.IsNullOrWhiteSpace(req.Letter) || req.Letter.Length != 1 || req.Letter[0] is not (>= 'A' and <= 'Z') and not (>= 'a' and <= 'z'))
         return Results.BadRequest(new { error = "letter must be a single A-Z character" });
 
     var session = await mgr.CreateAsync(req.Letter[0], ct);
