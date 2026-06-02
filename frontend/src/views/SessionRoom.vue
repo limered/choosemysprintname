@@ -98,12 +98,13 @@ onMounted(async () => {
 
 <template>
   <div class="session-room">
-    <header>
+    <header class="topbar">
       <RouterLink to="/" class="back">&larr; New session</RouterLink>
-      <h1 v-if="joined && session">Candidates starting with “{{ session.letter }}”</h1>
-      <h1 v-else>Joining session…</h1>
       <span v-if="myNickname" class="me">{{ myNickname }}</span>
     </header>
+
+    <h1 v-if="joined && session" class="title">Candidates starting with “{{ session.letter }}”</h1>
+    <h1 v-else class="title">Joining session…</h1>
 
     <p v-if="joinError" class="error">{{ joinError }}</p>
 
@@ -140,24 +141,28 @@ onMounted(async () => {
   margin: 2rem auto;
   padding: 0 1rem;
 }
-header {
+.topbar {
   display: flex;
-  align-items: baseline;
-  gap: 1rem;
-  margin-bottom: 1rem;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.8rem;
 }
 .back {
-  font-size: 0.9rem;
+  font-size: 0.8rem;
 }
 .me {
   margin-left: auto;
-  font-size: 0.9rem;
+  font-size: 0.75rem;
   font-family: monospace;
-  padding: 0.25rem 0.6rem;
+  padding: 0.15rem 0.5rem;
   border-radius: 999px;
   background: #eef2f7;
   color: #2a3a55;
   border: 1px solid #d6dee8;
+}
+.title {
+  margin-top: 2rem;
+  margin-bottom: 1rem;
 }
 .share {
   margin-bottom: 1.5rem;
