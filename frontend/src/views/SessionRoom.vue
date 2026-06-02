@@ -1,11 +1,10 @@
 <script setup>
-import { onMounted, onUnmounted, ref, computed } from 'vue'
+import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
 
 const route = useRoute()
 const sessionId = route.params.id
 const nicknameKey = `nickname:${sessionId}`
-const voteKey = `vote:${sessionId}`
 
 const POLL_INTERVAL_MS = 1500
 const TICK_INTERVAL_MS = 250
@@ -17,7 +16,7 @@ const joined = ref(false)
 const joinError = ref('')
 const copied = ref(false)
 const myNickname = ref('')
-const myVote = ref(localStorage.getItem(voteKey) || '')
+const myVote = ref('')
 const voteError = ref('')
 const voting = ref(false)
 
@@ -26,8 +25,6 @@ const startingTimer = ref(false)
 const extendingTimer = ref(false)
 const durationInput = ref(60)
 
-// Track when the last polled secondsRemaining was observed, so we can
-// smoothly tick down between polls.
 const lastPollAtMs = ref(0)
 const nowMs = ref(Date.now())
 
@@ -38,6 +35,14 @@ const shareUrl = computed(() => window.location.href)
 
 const phase = computed(() => session.value?.phase ?? 'Lobby')
 const winner = computed(() => session.value?.winner ?? null)
+const roundId = computed(() => session.value?.roundId ?? 1)
+// localStorage key is scoped per-round so a fresh round naturally clears
+// the user's previously stored vote.
+const voteKey = computed(() => `vote:${sessionId}:${roundId.value}`)
+
+const roundCandidateSet = computed(() => {
+  return new Set(session.value?.roundCandidates ?? [])
+})
 
 const voteCounts = computed(() => {
   const map = {}
@@ -52,10 +57,16 @@ const winnerCandidate = computed(() => {
   return session.value.candidates.find(c => c.name === winner.value) ?? null
 })
 
+const tieBreakerCandidates = computed(() => {
+  if (!session.value?.roundCandidates || !session.value?.candidates) return []
+  const names = roundCandidateSet.value
+  return session.value.candidates.filter(c => names.has(c.name))
+})
+
 const liveSecondsRemaining = computed(() => {
   const polled = session.value?.secondsRemaining
   if (polled === null || polled === undefined) return null
-  if (phase.value !== 'Voting') return polled
+  if (phase.value !== 'Voting' && phase.value !== 'TieBreaker') return polled
   const elapsedSec = Math.max(0, (nowMs.value - lastPollAtMs.value) / 1000)
   const remaining = polled - elapsedSec
   return remaining > 0 ? remaining : 0
@@ -69,6 +80,21 @@ const countdownLabel = computed(() => {
   const ss = (whole % 60).toString().padStart(2, '0')
   return `${mm}:${ss}`
 })
+
+const canVoteNow = computed(() =>
+  (phase.value === 'Voting' || phase.value === 'TieBreaker')
+  && session.value?.secondsRemaining !== null
+  && session.value?.secondsRemaining !== undefined
+)
+
+const timerIsRunning = computed(() =>
+  session.value?.secondsRemaining !== null && session.value?.secondsRemaining !== undefined
+)
+
+// Re-load the stored vote whenever the round changes (new round -> different key).
+watch(voteKey, (k) => {
+  myVote.value = localStorage.getItem(k) || ''
+}, { immediate: true })
 
 function generateNickname() {
   return fetch('/api/nickname')
@@ -165,8 +191,8 @@ async function castVote(candidateName) {
       const body = await res.json().catch(() => ({}))
       if (body?.error && body.error.includes('already voted')) {
         myVote.value = candidateName
-        localStorage.setItem(voteKey, candidateName)
-        voteError.value = 'You have already voted in this session.'
+        localStorage.setItem(voteKey.value, candidateName)
+        voteError.value = 'You have already voted in this round.'
       } else {
         voteError.value = body?.error || 'Voting is not active right now.'
       }
@@ -181,7 +207,7 @@ async function castVote(candidateName) {
       return
     }
     myVote.value = candidateName
-    localStorage.setItem(voteKey, candidateName)
+    localStorage.setItem(voteKey.value, candidateName)
     refreshSession()
   } catch (e) {
     voteError.value = `Network error: ${e.message}`
@@ -308,7 +334,19 @@ onUnmounted(() => {
           </form>
         </div>
 
-        <div v-else-if="phase === 'Voting'" class="voting-controls">
+        <div v-else-if="phase === 'TieBreaker' && !timerIsRunning" class="lobby-controls">
+          <form @submit.prevent="startTimer" class="timer-form">
+            <label>
+              Tie-breaker duration (seconds):
+              <input type="number" min="1" v-model.number="durationInput" :disabled="startingTimer" />
+            </label>
+            <button type="submit" :disabled="startingTimer">
+              {{ startingTimer ? 'Starting…' : 'Start tie-breaker' }}
+            </button>
+          </form>
+        </div>
+
+        <div v-else-if="(phase === 'Voting' || phase === 'TieBreaker') && timerIsRunning" class="voting-controls">
           <div class="countdown">{{ countdownLabel }}</div>
           <button type="button" @click="extendTimer" :disabled="extendingTimer">
             {{ extendingTimer ? 'Extending…' : '+1 min' }}
@@ -325,11 +363,14 @@ onUnmounted(() => {
       </section>
 
       <section v-else-if="phase === 'TieBreaker'" class="tie-panel">
-        It's a tie — tie-breaker coming soon.
+        <strong>Tie!</strong> New round between:
+        <span class="tied-names">{{ tieBreakerCandidates.map(c => c.name).join(', ') }}</span>
       </section>
 
       <p v-if="voteError" class="error">{{ voteError }}</p>
-      <p v-if="myVote && phase === 'Voting'" class="voted-msg">You voted for <strong>{{ myVote }}</strong>.</p>
+      <p v-if="myVote && (phase === 'Voting' || phase === 'TieBreaker')" class="voted-msg">
+        You voted for <strong>{{ myVote }}</strong> in this round.
+      </p>
 
       <p v-if="loading">Loading candidates…</p>
       <p v-else-if="error" class="error">{{ error }}</p>
@@ -343,15 +384,23 @@ onUnmounted(() => {
           v-for="c in session.candidates"
           :key="c.name"
           class="candidate"
-          :class="{ 'my-vote': myVote === c.name }"
+          :class="{
+            'my-vote': myVote === c.name,
+            'out-of-round': (phase === 'TieBreaker') && !roundCandidateSet.has(c.name)
+          }"
         >
           <img :src="c.spriteUrl" :alt="c.name" loading="lazy" />
           <span class="name">{{ c.name }}</span>
-          <span class="count">{{ voteCounts[c.name] ?? 0 }} vote{{ (voteCounts[c.name] ?? 0) === 1 ? '' : 's' }}</span>
+          <span class="count">
+            <template v-if="roundCandidateSet.has(c.name)">
+              {{ voteCounts[c.name] ?? 0 }} vote{{ (voteCounts[c.name] ?? 0) === 1 ? '' : 's' }}
+            </template>
+            <template v-else>eliminated</template>
+          </span>
           <button
             type="button"
             class="vote-btn"
-            :disabled="!!myVote || voting || phase !== 'Voting'"
+            :disabled="!!myVote || voting || !canVoteNow || !roundCandidateSet.has(c.name)"
             @click="castVote(c.name)"
           >
             {{ myVote === c.name ? 'Your vote' : 'Vote' }}
@@ -566,6 +615,14 @@ onUnmounted(() => {
   background: #2a7a3a;
   border-color: #2a7a3a;
   color: #fff;
+}
+.candidate.out-of-round {
+  opacity: 0.35;
+  filter: grayscale(0.8);
+}
+.tied-names {
+  margin-left: 0.4rem;
+  font-weight: 600;
 }
 .error {
   color: #c0392b;

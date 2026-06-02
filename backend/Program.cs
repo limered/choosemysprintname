@@ -38,6 +38,7 @@ app.MapGet("/api/sessions/{id:guid}", (Guid id, SessionManager mgr) =>
     if (session is null) return Results.NotFound();
 
     var tally = session.Tally;
+    var roundCandidates = session.CurrentRoundCandidates;
     return Results.Ok(new
     {
         id = session.Id,
@@ -45,8 +46,10 @@ app.MapGet("/api/sessions/{id:guid}", (Guid id, SessionManager mgr) =>
         phase = session.Phase.ToString(),
         secondsRemaining = session.SecondsRemaining,
         winner = session.Winner,
+        roundId = session.CurrentRoundId,
         candidates = session.Candidates.Select(c => new { name = c.Name, spriteUrl = c.SpriteUrl }),
-        votes = session.Candidates.Select(c => new { name = c.Name, count = tally.TryGetValue(c.Name, out var n) ? n : 0 })
+        roundCandidates = roundCandidates,
+        votes = roundCandidates.Select(name => new { name, count = tally.TryGetValue(name, out var n) ? n : 0 })
     });
 });
 
@@ -87,7 +90,7 @@ app.MapPost("/api/sessions/{id:guid}/timer/start", (Guid id, StartTimerRequest r
     {
         StartTimerResult.Success => Results.Ok(new { ok = true }),
         StartTimerResult.SessionNotFound => Results.NotFound(new { error = "session not found" }),
-        StartTimerResult.NotInLobby => Results.Conflict(new { error = "timer has already been started" }),
+        StartTimerResult.TimerAlreadyRunning => Results.Conflict(new { error = "a timer is already running" }),
         StartTimerResult.InvalidDuration => Results.BadRequest(new { error = "durationSeconds must be > 0" }),
         _ => Results.StatusCode(500),
     };

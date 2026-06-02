@@ -133,7 +133,7 @@ public class SessionManagerTests
 
         var second = manager.StartTimer(session.Id, 30);
 
-        Assert.Equal(StartTimerResult.NotInLobby, second);
+        Assert.Equal(StartTimerResult.TimerAlreadyRunning, second);
     }
 
     [Fact]
@@ -245,5 +245,179 @@ public class SessionManagerTests
         var result = manager.CastVote(session.Id, "bob", "Bisaknosp");
 
         Assert.Equal(CastVoteResult.NotInVotingPhase, result);
+    }
+
+    // ---------- Issue #6: Tie-breaker rounds ----------
+
+    [Fact]
+    public async Task TieBreaker_round_contains_only_previously_tied_candidates()
+    {
+        var time = new FakeTimeProvider();
+        var manager = CreateManager(time);
+        var session = await manager.CreateAsync('B');
+        manager.StartTimer(session.Id, 30);
+        manager.CastVote(session.Id, "alice", "Bisasam");
+        manager.CastVote(session.Id, "bob", "Bisaknosp");
+        // Bisaflor stays at 0 votes -> not part of the tie
+
+        time.Advance(TimeSpan.FromSeconds(31));
+
+        Assert.Equal(SessionPhase.TieBreaker, session.Phase);
+        var actual = session.CurrentRoundCandidates.OrderBy(x => x).ToArray();
+        Assert.Equal(new[] { "Bisaknosp", "Bisasam" }, actual);
+    }
+
+    [Fact]
+    public async Task Votes_are_reset_when_entering_tiebreaker()
+    {
+        var time = new FakeTimeProvider();
+        var manager = CreateManager(time);
+        var session = await manager.CreateAsync('B');
+        manager.StartTimer(session.Id, 30);
+        manager.CastVote(session.Id, "alice", "Bisasam");
+        manager.CastVote(session.Id, "bob", "Bisaknosp");
+
+        time.Advance(TimeSpan.FromSeconds(31));
+
+        Assert.Equal(SessionPhase.TieBreaker, session.Phase);
+        Assert.All(session.Tally.Values, v => Assert.Equal(0, v));
+    }
+
+    [Fact]
+    public async Task Nickname_can_vote_again_in_tiebreaker_round()
+    {
+        var time = new FakeTimeProvider();
+        var manager = CreateManager(time);
+        var session = await manager.CreateAsync('B');
+        manager.StartTimer(session.Id, 30);
+        manager.CastVote(session.Id, "alice", "Bisasam");
+        manager.CastVote(session.Id, "bob", "Bisaknosp");
+        time.Advance(TimeSpan.FromSeconds(31));
+        Assert.Equal(SessionPhase.TieBreaker, session.Phase);
+        manager.StartTimer(session.Id, 30);
+
+        var result = manager.CastVote(session.Id, "alice", "Bisaknosp");
+
+        Assert.Equal(CastVoteResult.Success, result);
+        Assert.Equal(1, session.Tally["Bisaknosp"]);
+    }
+
+    [Fact]
+    public async Task CastVote_in_tiebreaker_rejects_candidate_not_in_round()
+    {
+        var time = new FakeTimeProvider();
+        var manager = CreateManager(time);
+        var session = await manager.CreateAsync('B');
+        manager.StartTimer(session.Id, 30);
+        manager.CastVote(session.Id, "alice", "Bisasam");
+        manager.CastVote(session.Id, "bob", "Bisaknosp");
+        time.Advance(TimeSpan.FromSeconds(31));
+        manager.StartTimer(session.Id, 30);
+
+        // Bisaflor was eliminated (had 0 votes) and is not in this round
+        var result = manager.CastVote(session.Id, "carol", "Bisaflor");
+
+        Assert.Equal(CastVoteResult.CandidateNotFound, result);
+    }
+
+    [Fact]
+    public async Task StartTimer_works_in_tiebreaker_after_expiry()
+    {
+        var time = new FakeTimeProvider();
+        var manager = CreateManager(time);
+        var session = await manager.CreateAsync('B');
+        manager.StartTimer(session.Id, 30);
+        manager.CastVote(session.Id, "alice", "Bisasam");
+        manager.CastVote(session.Id, "bob", "Bisaknosp");
+        time.Advance(TimeSpan.FromSeconds(31));
+        Assert.Equal(SessionPhase.TieBreaker, session.Phase);
+        Assert.Null(session.SecondsRemaining);
+
+        var result = manager.StartTimer(session.Id, 45);
+
+        Assert.Equal(StartTimerResult.Success, result);
+        Assert.Equal(SessionPhase.TieBreaker, session.Phase);
+        Assert.Equal(45, session.SecondsRemaining);
+    }
+
+    [Fact]
+    public async Task Tiebreaker_resolves_to_finished_when_unique_top_vote_emerges()
+    {
+        var time = new FakeTimeProvider();
+        var manager = CreateManager(time);
+        var session = await manager.CreateAsync('B');
+        manager.StartTimer(session.Id, 30);
+        manager.CastVote(session.Id, "alice", "Bisasam");
+        manager.CastVote(session.Id, "bob", "Bisaknosp");
+        time.Advance(TimeSpan.FromSeconds(31));
+        manager.StartTimer(session.Id, 30);
+        manager.CastVote(session.Id, "alice", "Bisaknosp");
+
+        time.Advance(TimeSpan.FromSeconds(31));
+
+        Assert.Equal(SessionPhase.Finished, session.Phase);
+        Assert.Equal("Bisaknosp", session.Winner);
+    }
+
+    [Fact]
+    public async Task Tiebreaker_chains_into_another_tiebreaker_when_still_tied()
+    {
+        var time = new FakeTimeProvider();
+        var manager = CreateManager(time);
+        var session = await manager.CreateAsync('B');
+        manager.StartTimer(session.Id, 30);
+        manager.CastVote(session.Id, "alice", "Bisasam");
+        manager.CastVote(session.Id, "bob", "Bisaknosp");
+        time.Advance(TimeSpan.FromSeconds(31));
+        var roundAfterFirstExpiry = session.CurrentRoundId;
+
+        manager.StartTimer(session.Id, 30);
+        manager.CastVote(session.Id, "alice", "Bisasam");
+        manager.CastVote(session.Id, "bob", "Bisaknosp");
+        time.Advance(TimeSpan.FromSeconds(31));
+
+        Assert.Equal(SessionPhase.TieBreaker, session.Phase);
+        Assert.True(session.CurrentRoundId > roundAfterFirstExpiry);
+        Assert.Equal(new[] { "Bisaknosp", "Bisasam" }, session.CurrentRoundCandidates.OrderBy(x => x).ToArray());
+        Assert.All(session.Tally.Values, v => Assert.Equal(0, v));
+    }
+
+    [Fact]
+    public async Task Tiebreaker_with_zero_votes_chains_with_same_candidate_set()
+    {
+        var time = new FakeTimeProvider();
+        var manager = CreateManager(time);
+        var session = await manager.CreateAsync('B');
+        manager.StartTimer(session.Id, 30);
+        manager.CastVote(session.Id, "alice", "Bisasam");
+        manager.CastVote(session.Id, "bob", "Bisaknosp");
+        time.Advance(TimeSpan.FromSeconds(31));
+        var inPlayBefore = session.CurrentRoundCandidates.OrderBy(x => x).ToArray();
+        var roundBefore = session.CurrentRoundId;
+        manager.StartTimer(session.Id, 30);
+        // no votes cast
+
+        time.Advance(TimeSpan.FromSeconds(31));
+
+        Assert.Equal(SessionPhase.TieBreaker, session.Phase);
+        Assert.True(session.CurrentRoundId > roundBefore);
+        Assert.Equal(inPlayBefore, session.CurrentRoundCandidates.OrderBy(x => x).ToArray());
+    }
+
+    [Fact]
+    public async Task StartTimer_rejects_when_timer_already_running_in_tiebreaker()
+    {
+        var time = new FakeTimeProvider();
+        var manager = CreateManager(time);
+        var session = await manager.CreateAsync('B');
+        manager.StartTimer(session.Id, 30);
+        manager.CastVote(session.Id, "alice", "Bisasam");
+        manager.CastVote(session.Id, "bob", "Bisaknosp");
+        time.Advance(TimeSpan.FromSeconds(31));
+        Assert.Equal(StartTimerResult.Success, manager.StartTimer(session.Id, 30));
+
+        var second = manager.StartTimer(session.Id, 15);
+
+        Assert.Equal(StartTimerResult.TimerAlreadyRunning, second);
     }
 }
