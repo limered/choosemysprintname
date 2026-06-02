@@ -12,6 +12,7 @@ const session = ref(null)
 const joined = ref(false)
 const joinError = ref('')
 const copied = ref(false)
+const myNickname = ref('')
 
 const shareUrl = computed(() => window.location.href)
 
@@ -59,6 +60,7 @@ async function joinSession(nickname) {
       return
     }
     localStorage.setItem(storageKey, nickname)
+    myNickname.value = nickname
     joined.value = true
     await loadSession()
   } catch (e) {
@@ -79,6 +81,7 @@ async function copyShareLink() {
 onMounted(async () => {
   let nickname = localStorage.getItem(storageKey)
   if (nickname) {
+    myNickname.value = nickname
     joined.value = true
     loadSession()
   } else {
@@ -99,6 +102,7 @@ onMounted(async () => {
       <RouterLink to="/" class="back">&larr; New session</RouterLink>
       <h1 v-if="joined && session">Candidates starting with “{{ session.letter }}”</h1>
       <h1 v-else>Joining session…</h1>
+      <span v-if="myNickname" class="me">{{ myNickname }}</span>
     </header>
 
     <p v-if="joinError" class="error">{{ joinError }}</p>
@@ -144,6 +148,16 @@ header {
 }
 .back {
   font-size: 0.9rem;
+}
+.me {
+  margin-left: auto;
+  font-size: 0.9rem;
+  font-family: monospace;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #2a3a55;
+  border: 1px solid #d6dee8;
 }
 .share {
   margin-bottom: 1.5rem;
