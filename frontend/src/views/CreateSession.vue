@@ -8,7 +8,10 @@ const submitting = ref(false)
 const error = ref('')
 const activeSessions = ref([])
 const sessionsError = ref('')
+const pendingDeleteId = ref(null)
+const CONFIRM_DELETE_MS = 3000
 let pollTimer = null
+let pendingDeleteTimer = null
 
 async function loadActiveSessions() {
   try {
@@ -35,6 +38,37 @@ function phaseLabel(phase) {
 
 function joinSession(id) {
   router.push(`/session/${id}`)
+}
+
+function clearPendingDelete() {
+  if (pendingDeleteTimer) {
+    clearTimeout(pendingDeleteTimer)
+    pendingDeleteTimer = null
+  }
+  pendingDeleteId.value = null
+}
+
+async function onDeleteClick(id) {
+  if (pendingDeleteId.value === id) {
+    clearPendingDelete()
+    try {
+      const res = await fetch(`/api/sessions/${id}`, { method: 'DELETE' })
+      if (res.ok || res.status === 404) {
+        activeSessions.value = activeSessions.value.filter(s => s.id !== id)
+      } else {
+        sessionsError.value = `Failed to delete session (${res.status})`
+      }
+    } catch (e) {
+      sessionsError.value = `Network error: ${e.message}`
+    }
+    return
+  }
+  clearPendingDelete()
+  pendingDeleteId.value = id
+  pendingDeleteTimer = setTimeout(() => {
+    pendingDeleteId.value = null
+    pendingDeleteTimer = null
+  }, CONFIRM_DELETE_MS)
 }
 
 async function createSession() {
@@ -70,6 +104,7 @@ onMounted(() => {
 })
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
+  if (pendingDeleteTimer) clearTimeout(pendingDeleteTimer)
 })
 </script>
 
@@ -102,6 +137,15 @@ onUnmounted(() => {
           <span class="phase">{{ phaseLabel(s.phase) }}</span>
           <span class="participants">{{ s.participantCount }} joined</span>
           <button type="button" @click="joinSession(s.id)">Join</button>
+          <button
+            type="button"
+            class="delete-btn"
+            :class="{ pending: pendingDeleteId === s.id }"
+            :style="pendingDeleteId === s.id ? { '--confirm-ms': `${CONFIRM_DELETE_MS}ms` } : null"
+            @click="onDeleteClick(s.id)"
+          >
+            <span class="delete-label">{{ pendingDeleteId === s.id ? 'Confirm' : 'Delete' }}</span>
+          </button>
         </li>
       </ul>
     </section>
@@ -183,5 +227,36 @@ button {
 .empty {
   text-align: center;
   opacity: 0.7;
+}
+.delete-btn {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(192, 57, 43, 0.5);
+  background: transparent;
+  color: #ff8a7a;
+}
+.delete-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #c0392b;
+  transform: scaleX(0);
+  transform-origin: left;
+  pointer-events: none;
+}
+.delete-btn.pending {
+  color: #fff;
+  border-color: #c0392b;
+}
+.delete-btn.pending::before {
+  animation: confirm-fill var(--confirm-ms, 3000ms) linear forwards;
+}
+.delete-label {
+  position: relative;
+  z-index: 1;
+}
+@keyframes confirm-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
 }
 </style>

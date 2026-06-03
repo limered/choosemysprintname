@@ -167,6 +167,29 @@ public class SessionManagerTests
         Assert.DoesNotContain(finished.Id, active);
     }
 
+    [Fact]
+    public async Task Delete_removes_the_session_so_it_cannot_be_found_or_listed()
+    {
+        var manager = CreateManager();
+        var session = await manager.CreateAsync('B');
+
+        var removed = manager.Delete(session.Id);
+
+        Assert.True(removed);
+        Assert.Null(manager.Get(session.Id));
+        Assert.DoesNotContain(session.Id, manager.GetActiveSessions().Select(s => s.Id));
+    }
+
+    [Fact]
+    public void Delete_returns_false_for_unknown_session_id()
+    {
+        var manager = CreateManager();
+
+        var removed = manager.Delete(Guid.NewGuid());
+
+        Assert.False(removed);
+    }
+
     // ---------- Issue #5: timer + phase + winner ----------
 
     [Fact]

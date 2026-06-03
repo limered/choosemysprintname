@@ -365,6 +365,13 @@ public sealed class SessionManager
     public IReadOnlyList<Session> GetActiveSessions()
         => _sessions.Values.Where(s => s.Phase != SessionPhase.Finished).ToArray();
 
+    /// <summary>
+    /// Removes the session from the in-memory store. Returns false when no
+    /// session with that id exists. Winners already persisted via
+    /// <see cref="IWinnerHistoryStore"/> are unaffected.
+    /// </summary>
+    public bool Delete(Guid id) => _sessions.TryRemove(id, out _);
+
     public bool AddParticipant(Guid sessionId, string nickname)
     {
         if (!_sessions.TryGetValue(sessionId, out var session)) return false;
