@@ -427,13 +427,13 @@ onUnmounted(() => {
 }
 .me {
   margin-left: auto;
-  font-size: 0.75rem;
-  font-family: monospace;
-  padding: 0.15rem 0.5rem;
+  font-family: var(--display);
+  font-size: 1rem;
+  padding: 0.15rem 0.6rem;
   border-radius: 999px;
-  background: #eef2f7;
-  color: #2a3a55;
-  border: 1px solid #d6dee8;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 2px solid var(--border);
 }
 .title {
   margin-top: 2rem;
@@ -442,13 +442,13 @@ onUnmounted(() => {
 .share {
   margin-bottom: 1.5rem;
   padding: 0.75rem 1rem;
-  background: #f4f7fb;
-  border: 1px solid #d6dee8;
+  background: var(--surface);
+  border: 2px solid var(--border);
   border-radius: 8px;
 }
 .share label {
   font-size: 0.85rem;
-  color: #555;
+  color: var(--text-muted);
 }
 .share-row {
   display: flex;
@@ -458,35 +458,32 @@ onUnmounted(() => {
 }
 .share-link {
   flex: 1;
-  font-family: monospace;
-  font-size: 0.9rem;
+  font-family: var(--mono);
+  font-size: 1rem;
   padding: 0.4rem 0.5rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: #fff;
-  color: #222;
 }
 .copied {
   font-size: 0.85rem;
-  color: #2a7a3a;
+  color: var(--accent);
 }
 .timer-panel {
   margin-bottom: 1.5rem;
   padding: 0.75rem 1rem;
-  border: 1px solid #d6dee8;
+  border: 2px solid var(--border);
   border-radius: 8px;
-  background: #fafcff;
+  background: var(--surface);
 }
 .phase-row {
   display: flex;
   gap: 0.5rem;
   align-items: baseline;
   font-size: 0.85rem;
-  color: #555;
+  color: var(--text-muted);
 }
 .phase-value {
-  font-weight: 600;
-  color: #2a3a55;
+  font-family: var(--display);
+  font-size: 1.2rem;
+  color: var(--text);
 }
 .lobby-controls .timer-form {
   display: flex;
@@ -496,10 +493,7 @@ onUnmounted(() => {
 }
 .lobby-controls input[type="number"] {
   width: 6rem;
-  padding: 0.3rem 0.4rem;
   margin-left: 0.4rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
 }
 .voting-controls {
   display: flex;
@@ -508,19 +502,19 @@ onUnmounted(() => {
   margin-top: 0.5rem;
 }
 .countdown {
-  font-size: 1.8rem;
-  font-family: monospace;
-  font-weight: 600;
-  color: #2a3a55;
+  font-family: var(--display);
+  font-size: 2.5rem;
+  color: var(--text);
   min-width: 6rem;
 }
 .winner-panel {
   margin: 1.5rem 0;
   padding: 1.5rem;
   text-align: center;
-  border: 2px solid #2a7a3a;
+  border: 3px solid var(--accent);
   border-radius: 12px;
-  background: #f3fbf5;
+  background: var(--accent-soft);
+  box-shadow: 4px 4px 0 var(--shadow);
 }
 .winner-sprite {
   width: 192px;
@@ -528,31 +522,32 @@ onUnmounted(() => {
   image-rendering: pixelated;
 }
 .winner-name {
-  font-size: 2rem;
-  font-weight: 700;
-  color: #1f5a2c;
+  font-family: var(--display);
+  font-size: 2.5rem;
+  color: var(--accent-text);
   margin-top: 0.5rem;
   text-transform: capitalize;
 }
 .winner-label {
-  font-size: 1.2rem;
-  color: #2a7a3a;
+  font-family: var(--display);
+  font-size: 1.5rem;
+  color: var(--accent);
   margin-top: 0.25rem;
 }
 .tie-panel {
   margin: 1.5rem 0;
   padding: 1rem;
   text-align: center;
-  background: #fff6e5;
-  border: 1px solid #e0c79a;
+  background: var(--highlight);
+  border: 2px solid var(--border);
   border-radius: 8px;
-  color: #6a4a10;
+  color: var(--text);
 }
 .voted-msg {
   font-size: 0.9rem;
-  color: #2a3a55;
-  background: #eef9f1;
-  border: 1px solid #b9e0c4;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border: 2px solid var(--accent);
   padding: 0.4rem 0.6rem;
   border-radius: 6px;
   margin-bottom: 2rem;
@@ -575,29 +570,32 @@ onUnmounted(() => {
   align-items: center;
   width: 100%;
   padding: 0.75rem;
-  border: 1px solid #ddd;
+  border: 2px solid var(--border);
   border-radius: 8px;
-  background: #fafafa;
+  background: var(--surface);
   font: inherit;
   color: inherit;
   text-align: center;
   cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s, transform 0.05s;
+  box-shadow: 3px 3px 0 var(--shadow);
+  transition: transform 0.05s, box-shadow 0.05s, border-color 0.15s, background 0.15s;
 }
 .candidate:hover:not(:disabled) {
-  border-color: #2a3a55;
-  box-shadow: 0 0 0 2px rgba(42, 58, 85, 0.15);
+  border-color: var(--border-strong);
+  background: var(--highlight);
 }
 .candidate:active:not(:disabled) {
-  transform: scale(0.98);
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--shadow);
 }
 .candidate:disabled {
   cursor: not-allowed;
+  box-shadow: none;
 }
 .candidate.my-vote {
-  border-color: #2a7a3a;
-  box-shadow: 0 0 0 2px rgba(42, 122, 58, 0.2);
-  background: #f3fbf5;
+  border-color: var(--accent);
+  box-shadow: 4px 4px 0 var(--accent-soft);
+  background: var(--accent-soft);
 }
 .candidate.my-vote:disabled {
   cursor: default;
@@ -622,12 +620,11 @@ onUnmounted(() => {
   left: 0.5rem;
   min-width: 1.5rem;
   padding: 0.1rem 0.4rem;
-  font-size: 0.8rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: #2a3a55;
-  background: #eef2f7;
-  border: 1px solid #d6dee8;
+  font-family: var(--display);
+  font-size: 1rem;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 2px solid var(--border);
   border-radius: 999px;
   line-height: 1.2;
 }
@@ -642,8 +639,8 @@ onUnmounted(() => {
   justify-content: center;
   font-size: 0.95rem;
   font-weight: 700;
-  color: #fff;
-  background: #2a7a3a;
+  color: var(--accent-text);
+  background: var(--accent);
   border-radius: 999px;
 }
 .tied-names {
@@ -651,10 +648,10 @@ onUnmounted(() => {
   font-weight: 600;
 }
 .error {
-  color: #c0392b;
+  color: var(--danger);
 }
 .empty {
   font-style: italic;
-  color: #666;
+  color: var(--text-muted);
 }
 </style>

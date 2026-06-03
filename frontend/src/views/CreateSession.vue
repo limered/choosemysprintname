@@ -157,6 +157,7 @@ onUnmounted(() => {
   max-width: 560px;
   margin: 4rem auto;
   text-align: center;
+  padding: 0 1rem;
 }
 form {
   display: flex;
@@ -165,20 +166,16 @@ form {
   align-items: center;
   margin-top: 1.5rem;
 }
-input {
-  font-size: 2rem;
+form input {
+  font-family: var(--display);
+  font-size: 2.5rem;
   width: 3rem;
   text-align: center;
   text-transform: uppercase;
-  padding: 0.25rem;
-}
-button {
-  font-size: 1rem;
-  padding: 0.5rem 1rem;
-  cursor: pointer;
+  padding: 0.15rem;
 }
 .error {
-  color: #c0392b;
+  color: var(--danger);
   margin-top: 1rem;
 }
 .active-sessions {
@@ -201,52 +198,55 @@ button {
   align-items: center;
   gap: 0.75rem;
   padding: 0.5rem 0.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 2px solid var(--border);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface);
 }
 .letter-badge {
-  font-weight: 600;
-  font-size: 1.25rem;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 1.5rem;
   width: 2rem;
   height: 2rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-2);
+  border: 2px solid var(--border);
 }
 .phase {
-  opacity: 0.8;
+  color: var(--text-muted);
 }
 .participants {
   margin-left: auto;
-  opacity: 0.7;
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 .empty {
   text-align: center;
-  opacity: 0.7;
+  color: var(--text-muted);
 }
 .delete-btn {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(192, 57, 43, 0.5);
+  border: 2px solid var(--danger);
   background: transparent;
-  color: #ff8a7a;
+  color: var(--danger);
+  box-shadow: 3px 3px 0 var(--shadow);
 }
 .delete-btn::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: #c0392b;
+  background: var(--danger);
   transform: scaleX(0);
   transform-origin: left;
   pointer-events: none;
 }
 .delete-btn.pending {
-  color: #fff;
-  border-color: #c0392b;
+  color: var(--danger-text);
+  border-color: var(--danger);
 }
 .delete-btn.pending::before {
   animation: confirm-fill var(--confirm-ms, 3000ms) linear forwards;
