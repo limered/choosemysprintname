@@ -382,33 +382,27 @@ onUnmounted(() => {
       </div>
 
       <ul v-else-if="session && phase !== 'Finished'" class="grid">
-        <li
-          v-for="c in session.candidates"
-          :key="c.name"
-          class="candidate"
-          :class="{
-            'my-vote': myVote === c.name,
-            'out-of-round': (phase === 'TieBreaker') && !roundCandidateSet.has(c.name)
-          }"
-          :title="roundCandidateSet.has(c.name) && (voters[c.name]?.length)
-            ? `Voted by: ${voters[c.name].join(', ')}`
-            : ''"
-        >
-          <img :src="c.spriteUrl" :alt="c.name" loading="lazy" />
-          <span class="name">{{ c.name }}</span>
-          <span class="count">
-            <template v-if="roundCandidateSet.has(c.name)">
-              {{ voteCounts[c.name] ?? 0 }} vote{{ (voteCounts[c.name] ?? 0) === 1 ? '' : 's' }}
-            </template>
-            <template v-else>eliminated</template>
-          </span>
+        <li v-for="c in session.candidates" :key="c.name">
           <button
             type="button"
-            class="vote-btn"
+            class="candidate"
+            :class="{
+              'my-vote': myVote === c.name,
+              'out-of-round': (phase === 'TieBreaker') && !roundCandidateSet.has(c.name)
+            }"
             :disabled="voting || !canVoteNow || !roundCandidateSet.has(c.name) || myVote === c.name"
+            :aria-pressed="myVote === c.name"
+            :title="roundCandidateSet.has(c.name) && (voters[c.name]?.length)
+              ? `Voted by: ${voters[c.name].join(', ')}`
+              : ''"
             @click="castVote(c.name)"
           >
-            {{ myVote === c.name ? 'Your vote' : (myVote ? 'Change to this' : 'Vote') }}
+            <span v-if="roundCandidateSet.has(c.name)" class="count-badge">
+              {{ voteCounts[c.name] ?? 0 }}
+            </span>
+            <span v-if="myVote === c.name" class="check" aria-hidden="true">✓</span>
+            <img :src="c.spriteUrl" :alt="c.name" loading="lazy" />
+            <span class="name">{{ c.name }}</span>
           </button>
         </li>
       </ul>
@@ -563,9 +557,6 @@ onUnmounted(() => {
   border-radius: 6px;
   margin-bottom: 2rem;
 }
-.candidate {
-  cursor: help;
-}
 .grid {
   list-style: none;
   padding: 0;
@@ -574,20 +565,46 @@ onUnmounted(() => {
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 1rem;
 }
+.grid > li {
+  display: flex;
+}
 .candidate {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
+  width: 100%;
   padding: 0.75rem;
   border: 1px solid #ddd;
   border-radius: 8px;
   background: #fafafa;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  font: inherit;
+  color: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s, transform 0.05s;
+}
+.candidate:hover:not(:disabled) {
+  border-color: #2a3a55;
+  box-shadow: 0 0 0 2px rgba(42, 58, 85, 0.15);
+}
+.candidate:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.candidate:disabled {
+  cursor: not-allowed;
 }
 .candidate.my-vote {
   border-color: #2a7a3a;
   box-shadow: 0 0 0 2px rgba(42, 122, 58, 0.2);
   background: #f3fbf5;
+}
+.candidate.my-vote:disabled {
+  cursor: default;
+}
+.candidate.out-of-round {
+  opacity: 0.35;
+  filter: grayscale(0.8);
 }
 .candidate img {
   width: 96px;
@@ -599,35 +616,35 @@ onUnmounted(() => {
   text-transform: capitalize;
   font-size: 0.95rem;
 }
-.count {
-  margin-top: 0.25rem;
+.count-badge {
+  position: absolute;
+  top: 0.4rem;
+  left: 0.5rem;
+  min-width: 1.5rem;
+  padding: 0.1rem 0.4rem;
   font-size: 0.8rem;
-  color: #555;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #2a3a55;
+  background: #eef2f7;
+  border: 1px solid #d6dee8;
+  border-radius: 999px;
+  line-height: 1.2;
 }
-.vote-btn {
-  margin-top: 0.5rem;
-  padding: 0.35rem 0.8rem;
-  font-size: 0.85rem;
-  border: 1px solid #2a3a55;
-  border-radius: 4px;
-  background: #2a3a55;
+.check {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.5rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  font-weight: 700;
   color: #fff;
-  cursor: pointer;
-}
-.vote-btn:disabled {
-  background: #c8cdd6;
-  border-color: #c8cdd6;
-  color: #555;
-  cursor: not-allowed;
-}
-.candidate.my-vote .vote-btn:disabled {
   background: #2a7a3a;
-  border-color: #2a7a3a;
-  color: #fff;
-}
-.candidate.out-of-round {
-  opacity: 0.35;
-  filter: grayscale(0.8);
+  border-radius: 999px;
 }
 .tied-names {
   margin-left: 0.4rem;
