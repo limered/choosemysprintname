@@ -371,7 +371,7 @@ onUnmounted(() => {
 
       <p v-if="voteError" class="error">{{ voteError }}</p>
       <p v-if="myVote && (phase === 'Voting' || phase === 'TieBreaker')" class="voted-msg">
-        You voted for <strong>{{ myVote }}</strong> in this round. Click another candidate to change your vote.
+        You've voted in this round. Click another candidate to change your vote.
       </p>
 
       <p v-if="loading">Loading candidates…</p>
