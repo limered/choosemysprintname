@@ -1,11 +1,41 @@
 <script setup>
-import { ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const letter = ref('Q')
 const submitting = ref(false)
 const error = ref('')
+const activeSessions = ref([])
+const sessionsError = ref('')
+let pollTimer = null
+
+async function loadActiveSessions() {
+  try {
+    const res = await fetch('/api/sessions')
+    if (!res.ok) {
+      sessionsError.value = `Failed to load sessions (${res.status})`
+      return
+    }
+    activeSessions.value = await res.json()
+    sessionsError.value = ''
+  } catch (e) {
+    sessionsError.value = `Network error: ${e.message}`
+  }
+}
+
+function phaseLabel(phase) {
+  switch (phase) {
+    case 'Lobby': return 'Waiting to start'
+    case 'Voting': return 'Voting'
+    case 'TieBreaker': return 'Tie-breaker'
+    default: return phase
+  }
+}
+
+function joinSession(id) {
+  router.push(`/session/${id}`)
+}
 
 async function createSession() {
   error.value = ''
@@ -33,6 +63,14 @@ async function createSession() {
     submitting.value = false
   }
 }
+
+onMounted(() => {
+  loadActiveSessions()
+  pollTimer = setInterval(loadActiveSessions, 3000)
+})
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer)
+})
 </script>
 
 <template>
@@ -53,12 +91,26 @@ async function createSession() {
       </button>
     </form>
     <p v-if="error" class="error">{{ error }}</p>
+
+    <section class="active-sessions">
+      <h2>Or join an active session</h2>
+      <p v-if="sessionsError" class="error">{{ sessionsError }}</p>
+      <p v-else-if="activeSessions.length === 0" class="empty">No active sessions right now.</p>
+      <ul v-else>
+        <li v-for="s in activeSessions" :key="s.id">
+          <span class="letter-badge">{{ s.letter }}</span>
+          <span class="phase">{{ phaseLabel(s.phase) }}</span>
+          <span class="participants">{{ s.participantCount }} joined</span>
+          <button type="button" @click="joinSession(s.id)">Join</button>
+        </li>
+      </ul>
+    </section>
   </div>
 </template>
 
 <style scoped>
 .create-session {
-  max-width: 480px;
+  max-width: 560px;
   margin: 4rem auto;
   text-align: center;
 }
@@ -84,5 +136,52 @@ button {
 .error {
   color: #c0392b;
   margin-top: 1rem;
+}
+.active-sessions {
+  margin-top: 3rem;
+  text-align: left;
+}
+.active-sessions h2 {
+  text-align: center;
+}
+.active-sessions ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.active-sessions li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.letter-badge {
+  font-weight: 600;
+  font-size: 1.25rem;
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.phase {
+  opacity: 0.8;
+}
+.participants {
+  margin-left: auto;
+  opacity: 0.7;
+  font-size: 0.9rem;
+}
+.empty {
+  text-align: center;
+  opacity: 0.7;
 }
 </style>

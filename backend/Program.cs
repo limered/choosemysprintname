@@ -40,6 +40,18 @@ app.MapPost("/api/sessions", async (CreateSessionRequest req, SessionManager mgr
     return Results.Ok(new { id = session.Id });
 });
 
+app.MapGet("/api/sessions", (SessionManager mgr) =>
+{
+    var active = mgr.GetActiveSessions().Select(s => new
+    {
+        id = s.Id,
+        letter = s.Letter.ToString(),
+        phase = s.Phase.ToString(),
+        participantCount = s.Participants.Count,
+    });
+    return Results.Ok(active);
+});
+
 app.MapGet("/api/sessions/{id:guid}", (Guid id, SessionManager mgr) =>
 {
     var session = mgr.Get(id);

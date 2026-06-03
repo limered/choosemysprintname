@@ -358,6 +358,13 @@ public sealed class SessionManager
 
     public Session? Get(Guid id) => _sessions.TryGetValue(id, out var s) ? s : null;
 
+    /// <summary>
+    /// Returns sessions that are not yet finished, so users can discover and
+    /// join them from the front page. Order is unspecified.
+    /// </summary>
+    public IReadOnlyList<Session> GetActiveSessions()
+        => _sessions.Values.Where(s => s.Phase != SessionPhase.Finished).ToArray();
+
     public bool AddParticipant(Guid sessionId, string nickname)
     {
         if (!_sessions.TryGetValue(sessionId, out var session)) return false;

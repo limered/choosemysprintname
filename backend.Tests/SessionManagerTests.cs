@@ -146,6 +146,27 @@ public class SessionManagerTests
         Assert.Equal(0, tally["Bisaflor"]);
     }
 
+    [Fact]
+    public async Task GetActiveSessions_returns_sessions_not_yet_finished()
+    {
+        var time = new FakeTimeProvider();
+        var manager = CreateManager(time);
+        var lobby = await manager.CreateAsync('B');
+        var voting = await manager.CreateAsync('B');
+        manager.StartTimer(voting.Id, 30);
+        var finished = await manager.CreateAsync('B');
+        manager.StartTimer(finished.Id, 30);
+        manager.CastVote(finished.Id, "alice", "Bisasam");
+        time.Advance(TimeSpan.FromSeconds(31));
+        Assert.Equal(SessionPhase.Finished, finished.Phase);
+
+        var active = manager.GetActiveSessions().Select(s => s.Id).ToHashSet();
+
+        Assert.Contains(lobby.Id, active);
+        Assert.Contains(voting.Id, active);
+        Assert.DoesNotContain(finished.Id, active);
+    }
+
     // ---------- Issue #5: timer + phase + winner ----------
 
     [Fact]
