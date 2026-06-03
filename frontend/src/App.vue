@@ -43,13 +43,18 @@ import { theme, toggleTheme } from './theme.js'
 }
 .knob {
   position: absolute;
-  top: 2px;
+  top: 50%;
   left: 2px;
   width: 1rem;
   height: 1rem;
   border-radius: 999px;
   background: var(--text-muted);
+  transform: translateY(-50%);
   transition: transform 0.2s, background 0.2s;
+}
+.theme-toggle input:checked ~ .track .knob {
+  transform: translate(1.1rem, -50%);
+  background: var(--accent);
 }
 .theme-toggle input:checked ~ .track {
   background: var(--accent-soft);
