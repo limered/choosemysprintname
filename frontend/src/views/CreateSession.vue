@@ -9,9 +9,12 @@ const error = ref('')
 const activeSessions = ref([])
 const sessionsError = ref('')
 const pendingDeleteId = ref(null)
+const clearingWinners = ref(false)
+const clearWinnersConfirm = ref(false)
 const CONFIRM_DELETE_MS = 3000
 let pollTimer = null
 let pendingDeleteTimer = null
+let clearWinnersTimer = null
 
 async function loadActiveSessions() {
   try {
@@ -71,6 +74,24 @@ async function onDeleteClick(id) {
   }, CONFIRM_DELETE_MS)
 }
 
+async function onClearWinners() {
+  if (clearWinnersConfirm.value) {
+    clearWinnersConfirm.value = false
+    if (clearWinnersTimer) { clearTimeout(clearWinnersTimer); clearWinnersTimer = null }
+    clearingWinners.value = true
+    try {
+      await fetch('/api/winners', { method: 'DELETE' })
+    } catch { /* ignore */ }
+    clearingWinners.value = false
+    return
+  }
+  clearWinnersConfirm.value = true
+  clearWinnersTimer = setTimeout(() => {
+    clearWinnersConfirm.value = false
+    clearWinnersTimer = null
+  }, CONFIRM_DELETE_MS)
+}
+
 async function createSession() {
   error.value = ''
   const trimmed = (letter.value || '').trim()
@@ -105,6 +126,7 @@ onMounted(() => {
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
   if (pendingDeleteTimer) clearTimeout(pendingDeleteTimer)
+  if (clearWinnersTimer) clearTimeout(clearWinnersTimer)
 })
 </script>
 
@@ -148,6 +170,20 @@ onUnmounted(() => {
           </button>
         </li>
       </ul>
+    </section>
+
+    <section class="reset-section">
+      <button
+        type="button"
+        class="clear-winners-btn"
+        :class="{ pending: clearWinnersConfirm }"
+        :style="clearWinnersConfirm ? { '--confirm-ms': `${CONFIRM_DELETE_MS}ms` } : null"
+        :disabled="clearingWinners"
+        @click="onClearWinners"
+      >
+        <span class="delete-label">{{ clearWinnersConfirm ? 'Confirm clear' : 'Clear past winners' }}</span>
+      </button>
+      <p class="hint">Removes winner exclusions so all Pokemon are available again.</p>
     </section>
   </div>
 </template>
@@ -258,5 +294,37 @@ form input {
 @keyframes confirm-fill {
   from { transform: scaleX(0); }
   to { transform: scaleX(1); }
+}
+.reset-section {
+  margin-top: 3rem;
+  text-align: center;
+}
+.clear-winners-btn {
+  position: relative;
+  overflow: hidden;
+  border: 2px solid var(--danger);
+  background: transparent;
+  color: var(--danger);
+  box-shadow: 3px 3px 0 var(--shadow);
+}
+.clear-winners-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--danger);
+  transform: scaleX(0);
+  transform-origin: left;
+  pointer-events: none;
+}
+.clear-winners-btn.pending {
+  color: var(--danger-text);
+}
+.clear-winners-btn.pending::before {
+  animation: confirm-fill var(--confirm-ms, 3000ms) linear forwards;
+}
+.hint {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
 }
 </style>

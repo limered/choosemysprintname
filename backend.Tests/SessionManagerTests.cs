@@ -27,6 +27,12 @@ public class SessionManagerTests
 
         public Task<IReadOnlyList<string>> GetAllWinnerNamesAsync(CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<string>>(Saved.ToArray());
+
+        public Task ClearAllAsync(CancellationToken ct = default)
+        {
+            Saved.Clear();
+            return Task.CompletedTask;
+        }
     }
 
     private static SessionManager CreateManager(params GermanPokemonName[] names)

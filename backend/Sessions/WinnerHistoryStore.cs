@@ -6,6 +6,7 @@ public interface IWinnerHistoryStore
 {
     Task SaveWinnerAsync(string name, CancellationToken ct = default);
     Task<IReadOnlyList<string>> GetAllWinnerNamesAsync(CancellationToken ct = default);
+    Task ClearAllAsync(CancellationToken ct = default);
 }
 
 /// <summary>
@@ -78,5 +79,14 @@ public sealed class SqliteWinnerHistoryStore : IWinnerHistoryStore
             results.Add(reader.GetString(0));
         }
         return results;
+    }
+
+    public async Task ClearAllAsync(CancellationToken ct = default)
+    {
+        await using var conn = new SqliteConnection(_connectionString);
+        await conn.OpenAsync(ct);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM winners;";
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 }

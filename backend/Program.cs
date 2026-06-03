@@ -82,6 +82,12 @@ app.MapGet("/api/sessions/{id:guid}", (Guid id, SessionManager mgr) =>
 app.MapDelete("/api/sessions/{id:guid}", (Guid id, SessionManager mgr) =>
     mgr.Delete(id) ? Results.NoContent() : Results.NotFound());
 
+app.MapDelete("/api/winners", async (IWinnerHistoryStore store, CancellationToken ct) =>
+{
+    await store.ClearAllAsync(ct);
+    return Results.NoContent();
+});
+
 app.MapPost("/api/sessions/{id:guid}/participants", (Guid id, JoinSessionRequest req, SessionManager mgr) =>
 {
     if (string.IsNullOrWhiteSpace(req?.Nickname))
