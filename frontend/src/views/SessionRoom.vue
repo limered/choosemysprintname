@@ -23,6 +23,7 @@ const voting = ref(false)
 const timerError = ref('')
 const startingTimer = ref(false)
 const extendingTimer = ref(false)
+const endingTimer = ref(false)
 const durationInput = ref(60)
 
 const lastPollAtMs = ref(0)
@@ -263,6 +264,24 @@ async function extendTimer() {
   }
 }
 
+async function endTimerNow() {
+  timerError.value = ''
+  endingTimer.value = true
+  try {
+    const res = await fetch(`/api/sessions/${sessionId}/timer/end`, { method: 'POST' })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      timerError.value = body?.error || `Failed to end timer (${res.status})`
+      return
+    }
+    await refreshSession()
+  } catch (e) {
+    timerError.value = `Network error: ${e.message}`
+  } finally {
+    endingTimer.value = false
+  }
+}
+
 async function copyShareLink() {
   try {
     await navigator.clipboard.writeText(shareUrl.value)
@@ -352,6 +371,9 @@ onUnmounted(() => {
           <div class="countdown">{{ countdownLabel }}</div>
           <button type="button" @click="extendTimer" :disabled="extendingTimer">
             {{ extendingTimer ? 'Extending…' : '+1 min' }}
+          </button>
+          <button type="button" class="end-now-btn" @click="endTimerNow" :disabled="endingTimer">
+            {{ endingTimer ? 'Ending…' : 'End now' }}
           </button>
         </div>
 
@@ -500,6 +522,11 @@ onUnmounted(() => {
   gap: 1rem;
   align-items: center;
   margin-top: 0.5rem;
+}
+.end-now-btn {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: transparent;
 }
 .countdown {
   font-family: var(--display);

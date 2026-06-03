@@ -266,6 +266,24 @@ public sealed class Session
         }
     }
 
+    /// <summary>
+    /// Forces the current round's timer to expire immediately, triggering
+    /// resolution (winner or tie-breaker) on the next state access.
+    /// </summary>
+    internal ExtendTimerResult EndTimerNow()
+    {
+        lock (_stateLock)
+        {
+            ResolveIfExpiredLocked();
+            if (_currentRound.EndsAtUtc is null) return ExtendTimerResult.NotRunning;
+            if (_phase is not (SessionPhase.Voting or SessionPhase.TieBreaker))
+                return ExtendTimerResult.NotRunning;
+            _currentRound.EndsAtUtc = _timeProvider.GetUtcNow();
+            ResolveIfExpiredLocked();
+            return ExtendTimerResult.Success;
+        }
+    }
+
     internal CastVoteResult CastVote(string nickname, string candidateName)
     {
         lock (_stateLock)
@@ -398,5 +416,12 @@ public sealed class SessionManager
         if (!_sessions.TryGetValue(sessionId, out var session))
             return ExtendTimerResult.SessionNotFound;
         return session.ExtendTimer();
+    }
+
+    public ExtendTimerResult EndTimerNow(Guid sessionId)
+    {
+        if (!_sessions.TryGetValue(sessionId, out var session))
+            return ExtendTimerResult.SessionNotFound;
+        return session.EndTimerNow();
     }
 }

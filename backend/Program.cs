@@ -142,6 +142,18 @@ app.MapPost("/api/sessions/{id:guid}/timer/extend", (Guid id, SessionManager mgr
     };
 });
 
+app.MapPost("/api/sessions/{id:guid}/timer/end", (Guid id, SessionManager mgr) =>
+{
+    var result = mgr.EndTimerNow(id);
+    return result switch
+    {
+        ExtendTimerResult.Success => Results.Ok(new { ok = true }),
+        ExtendTimerResult.SessionNotFound => Results.NotFound(new { error = "session not found" }),
+        ExtendTimerResult.NotRunning => Results.Conflict(new { error = "timer is not running" }),
+        _ => Results.StatusCode(500),
+    };
+});
+
 // SPA fallback: any non-API, non-file route serves index.html
 app.MapFallbackToFile("index.html");
 
