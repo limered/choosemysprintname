@@ -34,6 +34,8 @@ import { theme, toggleTheme } from './theme.js'
 }
 .track {
   position: relative;
+  display: flex;
+  align-items: center;
   width: 2.5rem;
   height: 1.4rem;
   border-radius: 999px;
@@ -43,17 +45,15 @@ import { theme, toggleTheme } from './theme.js'
 }
 .knob {
   position: absolute;
-  top: 50%;
   left: 2px;
   width: 1rem;
   height: 1rem;
   border-radius: 999px;
   background: var(--text-muted);
-  transform: translateY(-50%);
   transition: transform 0.2s, background 0.2s;
 }
 .theme-toggle input:checked ~ .track .knob {
-  transform: translate(1.1rem, -50%);
+  transform: translateX(1.1rem);
   background: var(--accent);
 }
 .theme-toggle input:checked ~ .track {
