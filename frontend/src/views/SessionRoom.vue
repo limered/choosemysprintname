@@ -549,6 +549,9 @@ onUnmounted(() => {
   color: var(--accent);
 }
 .timer-panel {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   margin-bottom: 1.5rem;
   padding: 0.75rem 1rem;
   border: 2px solid var(--border);
