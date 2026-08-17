@@ -583,4 +583,81 @@ public class SessionManagerTests
         Assert.Contains("Bisaknosp", candidateNames);
         Assert.Contains("Bisaflor", candidateNames);
     }
+
+    // ---------- Participant vote status (who voted / all votes in) ----------
+
+    [Fact]
+    public async Task ParticipantStatuses_marks_voted_and_unvoted_participants()
+    {
+        var manager = CreateManager();
+        var session = await manager.CreateAsync('B');
+        manager.AddParticipant(session.Id, "alice");
+        manager.AddParticipant(session.Id, "bob");
+        manager.AddParticipant(session.Id, "carol");
+        manager.StartTimer(session.Id, 60);
+
+        manager.CastVote(session.Id, "alice", "Bisasam");
+
+        var statuses = session.ParticipantStatuses;
+        Assert.Equal(3, statuses.Count);
+        Assert.True(statuses.Single(p => p.Nickname == "alice").HasVoted);
+        Assert.False(statuses.Single(p => p.Nickname == "bob").HasVoted);
+        Assert.False(statuses.Single(p => p.Nickname == "carol").HasVoted);
+    }
+
+    [Fact]
+    public async Task ParticipantStatuses_keeps_voter_marked_after_changing_vote()
+    {
+        var manager = CreateManager();
+        var session = await manager.CreateAsync('B');
+        manager.AddParticipant(session.Id, "alice");
+        manager.StartTimer(session.Id, 60);
+        manager.CastVote(session.Id, "alice", "Bisasam");
+        manager.CastVote(session.Id, "alice", "Bisaknosp");
+
+        var status = session.ParticipantStatuses.Single();
+
+        Assert.True(status.HasVoted);
+        Assert.Equal("alice", status.Nickname);
+    }
+
+    [Fact]
+    public async Task ParticipantStatuses_reset_when_entering_tiebreaker_round()
+    {
+        var time = new FakeTimeProvider();
+        var manager = CreateManager(time);
+        var session = await manager.CreateAsync('B');
+        manager.AddParticipant(session.Id, "alice");
+        manager.AddParticipant(session.Id, "bob");
+        manager.StartTimer(session.Id, 30);
+        manager.CastVote(session.Id, "alice", "Bisasam");
+        manager.CastVote(session.Id, "bob", "Bisaknosp");
+
+        time.Advance(TimeSpan.FromSeconds(31));
+        Assert.Equal(SessionPhase.TieBreaker, session.Phase);
+
+        // Fresh round -> nobody has voted yet
+        Assert.All(session.ParticipantStatuses, p => Assert.False(p.HasVoted));
+
+        manager.StartTimer(session.Id, 30);
+        manager.CastVote(session.Id, "alice", "Bisaknosp");
+
+        var statuses = session.ParticipantStatuses;
+        Assert.True(statuses.Single(p => p.Nickname == "alice").HasVoted);
+        Assert.False(statuses.Single(p => p.Nickname == "bob").HasVoted);
+    }
+
+    [Fact]
+    public async Task ParticipantStatuses_are_sorted_by_nickname()
+    {
+        var manager = CreateManager();
+        var session = await manager.CreateAsync('B');
+        manager.AddParticipant(session.Id, "carol");
+        manager.AddParticipant(session.Id, "alice");
+        manager.AddParticipant(session.Id, "bob");
+
+        var nicknames = session.ParticipantStatuses.Select(p => p.Nickname).ToArray();
+
+        Assert.Equal(new[] { "alice", "bob", "carol" }, nicknames);
+    }
 }

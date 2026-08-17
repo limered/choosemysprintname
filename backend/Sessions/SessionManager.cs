@@ -41,6 +41,12 @@ public enum ExtendTimerResult
 }
 
 /// <summary>
+/// A joined participant's nickname and whether they have cast a vote in the
+/// current round. Exposed so the UI can show who still needs to vote.
+/// </summary>
+public readonly record struct ParticipantVoteStatus(string Nickname, bool HasVoted);
+
+/// <summary>
 /// State for a single voting round - either the initial voting round or any
 /// subsequent tie-breaker round. Each round has its own in-play candidate
 /// subset and its own fresh vote tally (one vote per nickname per round).
@@ -221,6 +227,28 @@ public sealed class Session
                 ResolveIfExpiredLocked();
                 var map = _currentRound.VotersByCandidate();
                 return map.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<string>)kv.Value, StringComparer.Ordinal);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Each joined participant with whether they have cast a vote in the
+    /// CURRENT round (votes reset per round, so tie-breaker rounds start with
+    /// everyone marked as not voted). Ordered by nickname for a stable UI.
+    /// </summary>
+    public IReadOnlyList<ParticipantVoteStatus> ParticipantStatuses
+    {
+        get
+        {
+            lock (_stateLock)
+            {
+                ResolveIfExpiredLocked();
+                string[] participants;
+                lock (_participantsLock) participants = _participants.ToArray();
+                return participants
+                    .Select(n => new ParticipantVoteStatus(n, _currentRound.VotesByNickname.ContainsKey(n)))
+                    .OrderBy(p => p.Nickname, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
             }
         }
     }

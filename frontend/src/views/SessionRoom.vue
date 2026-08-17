@@ -61,6 +61,13 @@ const voters = computed(() => {
   return map
 })
 
+const participants = computed(() => session.value?.participants ?? [])
+const votedCount = computed(() => participants.value.filter(p => p.hasVoted).length)
+const allVotesIn = computed(() =>
+  participants.value.length > 0 && votedCount.value === participants.value.length
+)
+const inVotingPhase = computed(() => phase.value === 'Voting' || phase.value === 'TieBreaker')
+
 const winnerCandidate = computed(() => {
   if (!winner.value || !session.value?.candidates) return null
   return session.value.candidates.find(c => c.name === winner.value) ?? null
@@ -380,6 +387,45 @@ onUnmounted(() => {
         <p v-if="timerError" class="error">{{ timerError }}</p>
       </section>
 
+      <section
+        v-if="session && participants.length > 0 && phase !== 'Finished'"
+        class="participants-panel"
+      >
+        <div class="participants-header">
+          <span class="participants-label">
+            <template v-if="inVotingPhase">
+              Votes cast: <strong>{{ votedCount }}/{{ participants.length }}</strong>
+            </template>
+            <template v-else>
+              Participants: <strong>{{ participants.length }}</strong>
+            </template>
+          </span>
+          <span v-if="inVotingPhase && allVotesIn" class="all-in">All votes in! 🎉</span>
+          <span v-else-if="inVotingPhase && !allVotesIn" class="waiting">
+            Waiting for {{ participants.length - votedCount }} more…
+          </span>
+        </div>
+        <ul class="participant-chips">
+          <li
+            v-for="p in participants"
+            :key="p.nickname"
+            class="chip"
+            :class="{
+              voted: p.hasVoted,
+              pending: inVotingPhase && !p.hasVoted,
+              me: p.nickname === myNickname
+            }"
+            :title="inVotingPhase
+              ? (p.hasVoted ? `${p.nickname} has voted` : `${p.nickname} hasn't voted yet`)
+              : p.nickname"
+          >
+            <span v-if="inVotingPhase" class="dot">{{ p.hasVoted ? '✓' : '○' }}</span>
+            <span v-else class="dot joined" aria-hidden="true">●</span>
+            <span class="chip-name">{{ p.nickname }}</span>
+          </li>
+        </ul>
+      </section>
+
       <section v-if="phase === 'Finished' && winnerCandidate" class="winner-panel">
         <img :src="winnerCandidate.spriteUrl" :alt="winnerCandidate.name" class="winner-sprite" />
         <div class="winner-name">{{ winnerCandidate.name }}</div>
@@ -569,6 +615,80 @@ onUnmounted(() => {
   border: 2px solid var(--border);
   border-radius: 8px;
   color: var(--text);
+}
+.participants-panel {
+  margin-bottom: 1.5rem;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.participants-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+.participants-label strong {
+  font-family: var(--display);
+  font-size: 1.1rem;
+  color: var(--text);
+}
+.all-in {
+  font-family: var(--display);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  padding: 0.15rem 0.7rem;
+}
+.waiting {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.participant-chips {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 2px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+}
+.chip.voted {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.chip.pending {
+  opacity: 0.65;
+}
+.chip.me {
+  outline: 2px dashed var(--accent);
+  outline-offset: 1px;
+}
+.dot {
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+}
+.dot.joined {
+  color: var(--text-muted);
+  font-size: 0.6rem;
 }
 .voted-msg {
   font-size: 0.9rem;

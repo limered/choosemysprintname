@@ -68,6 +68,7 @@ app.MapGet("/api/sessions/{id:guid}", (Guid id, SessionManager mgr) =>
         secondsRemaining = session.SecondsRemaining,
         winner = session.Winner,
         roundId = session.CurrentRoundId,
+        participants = session.ParticipantStatuses.Select(p => new { nickname = p.Nickname, hasVoted = p.HasVoted }),
         candidates = session.Candidates.Select(c => new { name = c.Name, spriteUrl = c.SpriteUrl }),
         roundCandidates = roundCandidates,
         votes = roundCandidates.Select(name => new
