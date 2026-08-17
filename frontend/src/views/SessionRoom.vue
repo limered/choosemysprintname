@@ -457,16 +457,20 @@ onUnmounted(() => {
             class="candidate"
             :class="{
               'my-vote': myVote === c.name,
-              'out-of-round': (phase === 'TieBreaker') && !roundCandidateSet.has(c.name)
+              'past-winner': c.isPastWinner,
+              'out-of-round': !c.isPastWinner && (phase === 'TieBreaker') && !roundCandidateSet.has(c.name)
             }"
-            :disabled="voting || !canVoteNow || !roundCandidateSet.has(c.name) || myVote === c.name"
+            :disabled="voting || !canVoteNow || c.isPastWinner || !roundCandidateSet.has(c.name) || myVote === c.name"
             :aria-pressed="myVote === c.name"
-            :title="roundCandidateSet.has(c.name) && (voters[c.name]?.length)
-              ? `Voted by: ${voters[c.name].join(', ')}`
-              : ''"
+            :title="c.isPastWinner
+              ? 'Past winner — already used as a sprint name'
+              : (roundCandidateSet.has(c.name) && (voters[c.name]?.length)
+                  ? `Voted by: ${voters[c.name].join(', ')}`
+                  : '')"
             @click="castVote(c.name)"
           >
-            <span v-if="roundCandidateSet.has(c.name)" class="count-badge">
+            <span v-if="c.isPastWinner" class="past-winner-badge">Past winner</span>
+            <span v-else-if="roundCandidateSet.has(c.name)" class="count-badge">
               {{ voteCounts[c.name] ?? 0 }}
             </span>
             <span v-if="myVote === c.name" class="check" aria-hidden="true">✓</span>
@@ -762,6 +766,16 @@ onUnmounted(() => {
   opacity: 0.35;
   filter: grayscale(0.8);
 }
+.candidate.past-winner {
+  opacity: 0.45;
+  filter: grayscale(0.8);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.candidate.past-winner:hover:not(:disabled) {
+  background: var(--surface);
+  border-color: var(--border);
+}
 .candidate img {
   width: 96px;
   height: 96px;
@@ -771,6 +785,21 @@ onUnmounted(() => {
   margin-top: 0.5rem;
   text-transform: capitalize;
   font-size: 0.95rem;
+}
+.past-winner-badge {
+  position: absolute;
+  top: 0.4rem;
+  left: 0.5rem;
+  padding: 0.1rem 0.45rem;
+  font-family: var(--display);
+  font-size: 0.75rem;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 2px solid var(--border);
+  border-radius: 999px;
+  line-height: 1.2;
 }
 .count-badge {
   position: absolute;

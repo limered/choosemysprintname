@@ -39,14 +39,34 @@ public class PokemonCatalogTests
     }
 
     [Fact]
-    public async Task GetPokemonByLetterAsync_excludes_names_in_excluded_list_case_insensitive()
+    public async Task GetPokemonByLetterAsync_flags_excluded_names_as_past_winners()
     {
         var catalog = CreateCatalog(DefaultSample);
 
         var result = await catalog.GetPokemonByLetterAsync(
             'b', new[] { "BISASAM", "Baldorfish" });
 
-        Assert.Equal(new[] { "Brutalanda" }, result.Select(c => c.Name));
+        var byName = result.ToDictionary(c => c.Name);
+        Assert.Equal(3, result.Count);
+        Assert.True(byName["Bisasam"].IsPastWinner);
+        Assert.True(byName["Baldorfish"].IsPastWinner);
+        Assert.False(byName["Brutalanda"].IsPastWinner);
+    }
+
+    [Fact]
+    public async Task GetPokemonByLetterAsync_returns_all_matching_pokemon_even_when_excluded()
+    {
+        var catalog = CreateCatalog(DefaultSample);
+
+        var result = await catalog.GetPokemonByLetterAsync('b', new[] { "Bisasam" });
+
+        // Excluded names are kept in the list (flagged) so the UI can show them.
+        Assert.Equal(
+            new[] { "Bisasam", "Baldorfish", "Brutalanda" }.OrderBy(n => n),
+            result.Select(c => c.Name).OrderBy(n => n));
+        Assert.All(
+            result.Where(c => c.Name != "Bisasam"),
+            c => Assert.False(c.IsPastWinner));
     }
 
     [Fact]

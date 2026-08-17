@@ -571,17 +571,47 @@ public class SessionManagerTests
     }
 
     [Fact]
-    public async Task CreateAsync_passes_existing_winner_names_as_exclusion_list_to_catalog()
+    public async Task CreateAsync_flags_existing_winners_as_past_winners_and_keeps_them_in_candidates()
     {
         var store = new FakeWinnerHistoryStore("Bisasam");
         var manager = CreateManager(new FakeTimeProvider(), store);
 
         var session = await manager.CreateAsync('B');
 
-        var candidateNames = session.Candidates.Select(c => c.Name).ToArray();
-        Assert.DoesNotContain("Bisasam", candidateNames);
-        Assert.Contains("Bisaknosp", candidateNames);
-        Assert.Contains("Bisaflor", candidateNames);
+        // Past winners stay visible (flagged) so users see why they are locked.
+        var bisasam = session.Candidates.Single(c => c.Name == "Bisasam");
+        Assert.True(bisasam.IsPastWinner);
+        Assert.All(
+            session.Candidates.Where(c => c.Name != "Bisasam"),
+            c => Assert.False(c.IsPastWinner));
+    }
+
+    [Fact]
+    public async Task CreateAsync_excludes_past_winners_from_first_round()
+    {
+        var store = new FakeWinnerHistoryStore("Bisasam");
+        var manager = CreateManager(new FakeTimeProvider(), store);
+
+        var session = await manager.CreateAsync('B');
+
+        Assert.DoesNotContain("Bisasam", session.CurrentRoundCandidates);
+        Assert.Equal(
+            new[] { "Bisaflor", "Bisaknosp" },
+            session.CurrentRoundCandidates.OrderBy(x => x).ToArray());
+    }
+
+    [Fact]
+    public async Task CastVote_rejects_past_winner_even_though_it_is_listed_as_candidate()
+    {
+        var store = new FakeWinnerHistoryStore("Bisasam");
+        var manager = CreateManager(new FakeTimeProvider(), store);
+        var session = await manager.CreateAsync('B');
+        manager.StartTimer(session.Id, 30);
+
+        var result = manager.CastVote(session.Id, "alice", "Bisasam");
+
+        Assert.Equal(CastVoteResult.CandidateNotFound, result);
+        Assert.Equal(0, session.Tally.Values.Sum());
     }
 
     // ---------- Participant vote status (who voted / all votes in) ----------

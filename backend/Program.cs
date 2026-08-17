@@ -69,7 +69,7 @@ app.MapGet("/api/sessions/{id:guid}", (Guid id, SessionManager mgr) =>
         winner = session.Winner,
         roundId = session.CurrentRoundId,
         participants = session.ParticipantStatuses.Select(p => new { nickname = p.Nickname, hasVoted = p.HasVoted }),
-        candidates = session.Candidates.Select(c => new { name = c.Name, spriteUrl = c.SpriteUrl }),
+        candidates = session.Candidates.Select(c => new { name = c.Name, spriteUrl = c.SpriteUrl, isPastWinner = c.IsPastWinner }),
         roundCandidates = roundCandidates,
         votes = roundCandidates.Select(name => new
         {
@@ -111,7 +111,7 @@ app.MapPost("/api/sessions/{id:guid}/votes", (Guid id, CastVoteRequest req, Sess
     {
         CastVoteResult.Success => Results.Ok(new { ok = true }),
         CastVoteResult.SessionNotFound => Results.NotFound(new { error = "session not found" }),
-        CastVoteResult.CandidateNotFound => Results.NotFound(new { error = "candidate not found in session" }),
+        CastVoteResult.CandidateNotFound => Results.NotFound(new { error = "candidate is not votable in this session" }),
         CastVoteResult.NotInVotingPhase => Results.Conflict(new { error = "voting is not active in this session phase" }),
         _ => Results.StatusCode(500),
     };

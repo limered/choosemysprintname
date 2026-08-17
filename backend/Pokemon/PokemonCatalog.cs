@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace Backend.Pokemon;
 
-public record PokemonCandidate(string Name, string SpriteUrl);
+public record PokemonCandidate(string Name, string SpriteUrl, bool IsPastWinner = false);
 
 public record GermanPokemonName(int Id, string Name);
 
@@ -40,10 +40,12 @@ public sealed class PokemonCatalog : IPokemonCatalog
         {
             if (string.IsNullOrEmpty(entry.Name)) continue;
             if (char.ToLowerInvariant(entry.Name[0]) != prefix) continue;
-            if (excluded.Contains(entry.Name)) continue;
 
+            // Past winners stay in the list so the UI can show why they are
+            // not selectable; they are flagged and filtered out of voting
+            // rounds by the SessionManager instead.
             var sprite = $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{entry.Id}.png";
-            results.Add(new PokemonCandidate(entry.Name, sprite));
+            results.Add(new PokemonCandidate(entry.Name, sprite, excluded.Contains(entry.Name)));
         }
 
         return Task.FromResult<IReadOnlyList<PokemonCandidate>>(results);

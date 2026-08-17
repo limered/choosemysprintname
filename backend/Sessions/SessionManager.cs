@@ -127,10 +127,11 @@ public sealed class Session
     /// <summary>
     /// Initializer hook used by <see cref="SessionManager"/> right after construction so
     /// the first round can be created using the resolved candidate list.
+    /// Past winners are shown to the user but never enter a voting round.
     /// </summary>
     internal void InitializeFirstRound()
     {
-        _currentRound = new Round(1, Candidates.Select(c => c.Name));
+        _currentRound = new Round(1, Candidates.Where(c => !c.IsPastWinner).Select(c => c.Name));
     }
 
     public IReadOnlyCollection<string> Participants
