@@ -62,9 +62,15 @@ const voters = computed(() => {
 })
 
 const participants = computed(() => session.value?.participants ?? [])
+const otherParticipants = computed(() =>
+  participants.value.filter(p => p.nickname !== myNickname)
+)
 const votedCount = computed(() => participants.value.filter(p => p.hasVoted).length)
 const allVotesIn = computed(() =>
   participants.value.length > 0 && votedCount.value === participants.value.length
+)
+const iHaveVoted = computed(() =>
+  participants.value.some(p => p.nickname === myNickname && p.hasVoted)
 )
 const inVotingPhase = computed(() => phase.value === 'Voting' || phase.value === 'TieBreaker')
 
@@ -326,7 +332,9 @@ onUnmounted(() => {
   <div class="session-room">
     <header class="topbar">
       <RouterLink to="/" class="back">&larr; New session</RouterLink>
-      <span v-if="myNickname" class="me">{{ myNickname }}</span>
+      <span v-if="myNickname" class="me">
+        {{ myNickname }}<span v-if="iHaveVoted" class="me-check" title="You've voted">✓</span>
+      </span>
     </header>
 
     <h1 v-if="joined && session" class="title">Candidates starting with “{{ session.letter }}”</h1>
@@ -382,6 +390,7 @@ onUnmounted(() => {
           <button type="button" class="end-now-btn" @click="endTimerNow" :disabled="endingTimer">
             {{ endingTimer ? 'Ending…' : 'End now' }}
           </button>
+          <span v-if="allVotesIn" class="all-in">All votes in! 🎉</span>
         </div>
 
         <p v-if="timerError" class="error">{{ timerError }}</p>
@@ -400,21 +409,13 @@ onUnmounted(() => {
               Participants: <strong>{{ participants.length }}</strong>
             </template>
           </span>
-          <span v-if="inVotingPhase && allVotesIn" class="all-in">All votes in! 🎉</span>
-          <span v-else-if="inVotingPhase && !allVotesIn" class="waiting">
-            Waiting for {{ participants.length - votedCount }} more…
-          </span>
         </div>
         <ul class="participant-chips">
           <li
-            v-for="p in participants"
+            v-for="p in otherParticipants"
             :key="p.nickname"
             class="chip"
-            :class="{
-              voted: p.hasVoted,
-              pending: inVotingPhase && !p.hasVoted,
-              me: p.nickname === myNickname
-            }"
+            :class="{ voted: p.hasVoted, pending: inVotingPhase && !p.hasVoted }"
             :title="inVotingPhase
               ? (p.hasVoted ? `${p.nickname} has voted` : `${p.nickname} hasn't voted yet`)
               : p.nickname"
@@ -502,6 +503,19 @@ onUnmounted(() => {
   background: var(--surface-2);
   color: var(--text);
   border: 2px solid var(--border);
+}
+.me-check {
+  margin-left: 0.35rem;
+  color: var(--accent-text);
+  background: var(--accent);
+  border-radius: 999px;
+  width: 1.1rem;
+  height: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
 }
 .title {
   margin-top: 2rem;
@@ -638,8 +652,9 @@ onUnmounted(() => {
   color: var(--text);
 }
 .all-in {
+  margin-left: auto;
   font-family: var(--display);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 700;
   color: var(--accent-text);
   background: var(--accent-soft);
@@ -647,16 +662,13 @@ onUnmounted(() => {
   border-radius: 999px;
   padding: 0.15rem 0.7rem;
 }
-.waiting {
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
 .participant-chips {
   list-style: none;
   padding: 0;
   margin: 0;
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-start;
   gap: 0.5rem;
 }
 .chip {
@@ -676,10 +688,6 @@ onUnmounted(() => {
 }
 .chip.pending {
   opacity: 0.65;
-}
-.chip.me {
-  outline: 2px dashed var(--accent);
-  outline-offset: 1px;
 }
 .dot {
   font-weight: 700;
